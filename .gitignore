@@ -50,3 +50,4 @@ next-env.d.ts
 data/**/*.jpg
 data/**/*.jpeg
 data/index.json
+data/dropped-pageids.json

@@ -121,8 +121,31 @@ export async function enrichResource(publicId: string): Promise<CloudinaryResour
   if (env.cloudinary.captioning) {
     options.detection = "captioning";
   }
-  const res = (await cld.uploader.explicit(publicId, options)) as UploadApiResponse;
-  return res as unknown as CloudinaryResource;
+  try {
+    const res = (await cld.uploader.explicit(publicId, options)) as UploadApiResponse;
+    return res as unknown as CloudinaryResource;
+  } catch (err) {
+    // Free add-on quotas are small (e.g. 50 taggings/month). When one is exhausted or not registered,
+    // keep the asset: re-run with metadata only so EXIF, phash and colours still land.
+    if (isAddonError(err) && (options.categorization || options.detection)) {
+      console.warn(`[cloudinary] add-on unavailable for ${publicId}; ingesting without AI tags/caption: ${addonErrorMessage(err)}`);
+      delete options.categorization;
+      delete options.auto_tagging;
+      delete options.detection;
+      const res = (await cld.uploader.explicit(publicId, options)) as UploadApiResponse;
+      return res as unknown as CloudinaryResource;
+    }
+    throw err;
+  }
+}
+
+function addonErrorMessage(err: unknown): string {
+  const e = err as { error?: { message?: string }; message?: string };
+  return e?.error?.message ?? e?.message ?? String(err);
+}
+
+function isAddonError(err: unknown): boolean {
+  return /quota|limit|exceed|not (registered|subscribed|enabled)|add-?on|addon|categorization|detection/i.test(addonErrorMessage(err));
 }
 
 /** Fetches a resource with metadata without re-running add-ons. */

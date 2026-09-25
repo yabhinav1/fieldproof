@@ -40,6 +40,12 @@ export async function createDatabase(opts: { dataDir?: string; url?: string } = 
     return { db, driver: "postgres", close: () => client.end() };
   }
 
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    throw new Error(
+      "DATABASE_URL is not set. Serverless hosts have no writable disk for the embedded database; add DATABASE_URL (Neon pooled connection string) to the project's environment variables and redeploy.",
+    );
+  }
+
   const { PGlite } = await import("@electric-sql/pglite");
   const { vector } = await import("@electric-sql/pglite-pgvector");
   const dataDir = opts.dataDir ?? process.env.PGLITE_DATA_DIR ?? path.join(process.cwd(), ".pglite");

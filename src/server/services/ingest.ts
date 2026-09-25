@@ -17,6 +17,7 @@ import { assignPhase } from "../lib/phase";
 import { isValidPhash } from "../lib/phash";
 import { isVerified, verifyAsset } from "../lib/verify";
 import { embedTexts, embeddingModelName } from "../ai/embeddings";
+import { describeImage } from "../ai/describe";
 import { getProject } from "./projects";
 import { badRequest } from "../http";
 
@@ -125,8 +126,21 @@ export async function ingestResource(db: Database, args: IngestResourceArgs): Pr
   // Phase assignment (EXIF date only; upload time is not evidence of when a photo was taken).
   const phase: Phase = args.phaseOverride ?? assignPhase(exifCapturedAt, project);
 
-  const aiTags = extractAiTags(resource);
-  const aiCaption = extractCaption(resource);
+  let aiTags = extractAiTags(resource);
+  let aiCaption = extractCaption(resource);
+  // Cloudinary add-ons are quota-limited on free plans; fill any gap with the vision model so
+  // search and reports never depend on the add-on budget. Non-fatal if the model is unavailable.
+  if (!aiCaption || aiTags.length === 0) {
+    try {
+      const described = await describeImage(derivedUrl(resource.public_id, TRANSFORMS.analysis).url);
+      if (described) {
+        if (!aiCaption) aiCaption = described.caption;
+        if (aiTags.length === 0) aiTags = described.tags;
+      }
+    } catch (err) {
+      console.warn(`[ingest] vision description failed for ${resource.public_id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
   const phash = isValidPhash(resource.phash) ? resource.phash.toLowerCase() : null;
 
   const peers = await db

@@ -90,7 +90,7 @@ All responses are `{ ok: true, data }` or `{ ok: false, error, details? }`. IDs 
 2. Upload to `uploadUrl` as multipart form: `file`, `api_key`, `signature`, and **every key in `params` unchanged**. Or pass these to the Cloudinary Upload Widget as `uploadSignature`.
 3. `POST /api/assets/ingest` with `{ projectId, publicIds: string[], siteId?, phase?, analyze? }` → `{ summary, results[] }`.
 
-Ingest runs Cloudinary analysis (tags, caption, EXIF, phash, colours), assigns site by GPS proximity and phase by EXIF date, runs verification, and embeds for search. Re-ingesting the same `public_id` updates in place.
+Ingest runs Cloudinary analysis (tags, caption, EXIF, phash, colours), fills missing captions/tags with the vision model when add-on quotas run out, assigns site by GPS proximity and phase by EXIF date, runs verification, and embeds for search. Re-ingesting the same `public_id` updates in place.
 
 ### Assets
 | Method | Path | Query / body | Returns |
@@ -108,12 +108,14 @@ Flag codes: `no_gps`, `no_capture_date` (informational), `far_from_site`, `no_si
 | Method | Path | Body / query | Returns |
 |---|---|---|---|
 | GET | `/api/sites/:id/suggest-pair` | | `{ beforeAssetId, afterAssetId, strategy }` or `null` |
-| POST | `/api/comparisons` | `{ beforeAssetId, afterAssetId }` | comparison (takes ~10–30 s) |
+| POST | `/api/comparisons` | `{ beforeAssetId, afterAssetId, mode? }` | comparison (takes ~10–30 s) |
 | GET | `/api/comparisons?projectId=&siteId=` | | comparisons, newest first |
 | GET | `/api/comparisons/:id` | | comparison |
 | DELETE | `/api/comparisons/:id` | | `{ deleted }` |
 
-Comparison fields: `beforeUrl`, `afterUrl` (same 1024×768 crop for the slider), `headline`, `summary`, `sameLocation`, `locationConfidence`, `metrics[] { name, direction, reason }` where name ∈ `vegetation_cover | waste_and_debris | water_clarity | human_activity | infrastructure` and direction ∈ `increased | decreased | unchanged | not_visible`.
+`mode` is `same_spot` (default: strict repeat photography, metrics only when the model agrees it is the same place) or `representative` (two photos standing for the site before and after, possibly different vantage points; metrics compare the depicted conditions and the UI must label it "representative"). Use `representative` when the team has no fixed-point pairs.
+
+Comparison fields: `mode`, `beforeUrl`, `afterUrl` (same 1024×768 crop for the slider), `headline`, `summary`, `sameLocation`, `locationConfidence`, `metrics[] { name, direction, reason }` where name ∈ `vegetation_cover | waste_and_debris | water_clarity | human_activity | infrastructure` and direction ∈ `increased | decreased | unchanged | not_visible`.
 
 ### Search
 `GET /api/search?q=plastic+waste+near+river&projectId=…&siteId=&phase=&from=&to=&verifiedOnly=true&limit=30`

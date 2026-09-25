@@ -42,6 +42,8 @@ export interface NarrativeFacts {
       headline: string | null;
       summary: string | null;
       metrics: Array<{ name: string; direction: string; reason: string }>;
+      /** "representative" means the pair is not fixed-point repeat photography; say so if you cite it. */
+      mode: "same_spot" | "representative";
     };
   }>;
 }

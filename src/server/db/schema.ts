@@ -23,6 +23,12 @@ export const provenancePurposeEnum = pgEnum("provenance_purpose", [
   "campaign",
   "analysis",
 ]);
+/**
+ * same_spot: strict repeat photography; metrics only if the model believes it is the same place.
+ * representative: two photos standing for the site's condition before and after, possibly from
+ * different vantage points; metrics compare the depicted conditions and the UI labels it as such.
+ */
+export const comparisonModeEnum = pgEnum("comparison_mode", ["same_spot", "representative"]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -127,6 +133,7 @@ export const comparisons = pgTable(
       .references(() => assets.id, { onDelete: "cascade" }),
     beforeUrl: text("before_url").notNull(),
     afterUrl: text("after_url").notNull(),
+    mode: comparisonModeEnum("mode").notNull().default("same_spot"),
     headline: text("headline"),
     summary: text("summary"),
     sameLocation: boolean("same_location"),
@@ -203,6 +210,7 @@ export const provenanceRelations = relations(provenance, ({ one }) => ({
 // ---------- JSON shapes ----------
 
 export type Phase = (typeof phaseEnum.enumValues)[number];
+export type ComparisonMode = (typeof comparisonModeEnum.enumValues)[number];
 export type ProvenancePurpose = (typeof provenancePurposeEnum.enumValues)[number];
 
 export type AssetFlagCode =

@@ -12,6 +12,11 @@ import { getProject } from "./projects";
 export const CreateComparisonSchema = z.object({
   beforeAssetId: z.string().uuid(),
   afterAssetId: z.string().uuid(),
+  /**
+   * same_spot (default): strict repeat photography, metrics only when it is the same place.
+   * representative: compare depicted conditions even from different vantage points; labelled as such.
+   */
+  mode: z.enum(["same_spot", "representative"]).default("same_spot"),
 });
 
 export const ListComparisonsQuery = z.object({
@@ -39,6 +44,7 @@ export async function createComparison(db: Database, input: z.infer<typeof Creat
   const { result, model } = await compareImages({
     beforeUrl: beforeDerived.url,
     afterUrl: afterDerived.url,
+    mode: input.mode,
     siteName: site?.name,
     projectName: project.name,
   });
@@ -52,6 +58,7 @@ export async function createComparison(db: Database, input: z.infer<typeof Creat
       afterAssetId: after.id,
       beforeUrl: beforeDerived.url,
       afterUrl: afterDerived.url,
+      mode: input.mode,
       headline: result.headline,
       summary: result.summary,
       sameLocation: result.same_location,

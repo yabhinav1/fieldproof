@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { generateStructured } from "./structured";
-import type { ComparisonMetric } from "../db/schema";
+import type { ComparisonMetric, ComparisonMode } from "../db/schema";
 
 export const METRIC_NAMES = [
   "vegetation_cover",
@@ -11,7 +11,7 @@ export const METRIC_NAMES = [
 ] as const;
 
 const ComparisonSchema = z.object({
-  same_location: z.boolean().describe("Whether both photos plausibly show the same place."),
+  same_location: z.boolean().describe("Whether both photos plausibly show the same place from a similar vantage point."),
   location_confidence: z.number().min(0).max(1).describe("Confidence that it is the same place, 0 to 1."),
   headline: z.string().describe("At most 10 words, suitable as a report or social caption."),
   summary: z.string().describe("About 60 words, neutral NGO impact-report tone, only what is visible."),
@@ -28,22 +28,31 @@ const ComparisonSchema = z.object({
 
 export type ComparisonResult = z.infer<typeof ComparisonSchema>;
 
-const SYSTEM_PROMPT = `You compare two field photographs for a sustainability impact report. The first image is the BEFORE state and the second is the AFTER state of the same project site.
-
-Describe only what is visible. Do not speculate about causes, dates, or people's intentions. If the two photos clearly do not show the same place, say so and set same_location to false; still fill in every metric using "not_visible" where a comparison is impossible.
-
-Rate each metric relative to the BEFORE image:
+const METRIC_GUIDE = `Rate each metric for the AFTER photo relative to the BEFORE photo:
 - vegetation_cover: plants, trees, grass, canopy.
 - waste_and_debris: litter, dumped material, construction rubble.
-- water_clarity: visible water bodies; "not_visible" if none.
+- water_clarity: visible water bodies; "not_visible" if neither photo shows water.
 - human_activity: people working, volunteers, visitors.
 - infrastructure: paths, bins, fences, signage, planting beds, structures.
 
-Write for a donor or government reader: plain, specific, and free of marketing language.`;
+Write for a donor or government reader: plain, specific, and free of marketing language. Describe only what is visible; do not speculate about causes, dates, or intentions.`;
+
+const SAME_SPOT_PROMPT = `You compare two field photographs for a sustainability impact report. The first image is the BEFORE state and the second is the AFTER state of the same project site, ideally taken from the same vantage point.
+
+If the two photos clearly do not show the same place, set same_location to false and use "not_visible" for every metric; say so plainly in the summary.
+
+${METRIC_GUIDE}`;
+
+const REPRESENTATIVE_PROMPT = `You compare two field photographs for a sustainability impact report. Both photos come from the same project site. The first is a representative photo of the site BEFORE the intervention and the second a representative photo AFTER it. They were not necessarily taken from the same vantage point, and that is expected: field teams often lack exact repeat photography.
+
+Still report same_location honestly (true only if it looks like the same vantage point), but ALWAYS fill in every metric by comparing the conditions the two photos depict. In the summary, describe the change in conditions and, in one clause, note that the photos are representative rather than a fixed-point pair.
+
+${METRIC_GUIDE}`;
 
 export interface CompareInput {
   beforeUrl: string;
   afterUrl: string;
+  mode: ComparisonMode;
   siteName?: string;
   projectName?: string;
 }
@@ -55,7 +64,7 @@ export async function compareImages(input: CompareInput): Promise<{ result: Comp
     .join("\n");
 
   const { result, model, provider } = await generateStructured({
-    system: SYSTEM_PROMPT,
+    system: input.mode === "representative" ? REPRESENTATIVE_PROMPT : SAME_SPOT_PROMPT,
     schema: ComparisonSchema,
     maxTokens: 4000,
     segments: [

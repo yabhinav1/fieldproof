@@ -18,6 +18,7 @@ export interface ReportRenderData {
       headline: string | null;
       summary: string | null;
       metrics: ComparisonMetric[];
+      mode: "same_spot" | "representative";
     };
     gallery: Array<{ id: string; url: string; caption: string | null; phase: Phase; capturedAt: string | null; publicId: string }>;
   }>;
@@ -58,6 +59,7 @@ export function renderReportHtml(d: ReportRenderData): string {
           <figure><img src="${esc(s.comparison.beforeUrl)}" alt="Before, ${esc(s.name)}"><figcaption>Before</figcaption></figure>
           <figure><img src="${esc(s.comparison.afterUrl)}" alt="After, ${esc(s.name)}"><figcaption>After</figcaption></figure>
         </div>
+        ${s.comparison.mode === "representative" ? `<p class="muted">Representative photos of the site before and after the intervention, not a fixed-point pair.</p>` : ""}
         ${s.comparison.headline ? `<p class="headline">${esc(s.comparison.headline)}</p>` : ""}
         ${s.comparison.summary ? `<p>${esc(s.comparison.summary)}</p>` : ""}
         <ul class="metrics">

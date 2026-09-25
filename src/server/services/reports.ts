@@ -38,9 +38,11 @@ export async function createReport(db: Database, input: z.infer<typeof CreateRep
     .where(eq(comparisons.projectId, project.id))
     .orderBy(desc(comparisons.generatedAt));
 
+  // Latest usable comparison per site: a same-spot pair the model accepted, or a representative pair.
   const latestBySite = new Map<string, Comparison>();
   for (const c of allComparisons) {
-    if (c.siteId && !latestBySite.has(c.siteId) && c.sameLocation !== false) latestBySite.set(c.siteId, c);
+    const usable = c.mode === "representative" || c.sameLocation !== false;
+    if (c.siteId && usable && !latestBySite.has(c.siteId)) latestBySite.set(c.siteId, c);
   }
 
   const dated = assetRows.filter((a) => a.capturedAt).map((a) => a.capturedAt!.getTime());
@@ -84,7 +86,7 @@ export async function createReport(db: Database, input: z.infer<typeof CreateRep
           .filter((c): c is string => Boolean(c))
           .slice(0, 6),
         comparison: cmp
-          ? { headline: cmp.headline, summary: cmp.summary, metrics: cmp.metrics }
+          ? { headline: cmp.headline, summary: cmp.summary, metrics: cmp.metrics, mode: cmp.mode }
           : null,
       };
     }),
@@ -133,7 +135,7 @@ export async function createReport(db: Database, input: z.infer<typeof CreateRep
         lat: s.lat,
         lng: s.lng,
         comparison: cmp
-          ? { beforeUrl: cmp.beforeUrl, afterUrl: cmp.afterUrl, headline: cmp.headline, summary: cmp.summary, metrics: cmp.metrics }
+          ? { beforeUrl: cmp.beforeUrl, afterUrl: cmp.afterUrl, headline: cmp.headline, summary: cmp.summary, metrics: cmp.metrics, mode: cmp.mode }
           : null,
         gallery: mine.slice(-6).map((a) => ({
           id: a.id,

@@ -185,8 +185,20 @@ export async function uploadFile(
   if (env.cloudinary.captioning) {
     options.detection = "captioning";
   }
-  const res = await cld.uploader.upload(file, options);
-  return res as unknown as CloudinaryResource;
+  try {
+    const res = await cld.uploader.upload(file, options);
+    return res as unknown as CloudinaryResource;
+  } catch (err) {
+    if (isAddonError(err) && (options.categorization || options.detection)) {
+      console.warn(`[cloudinary] add-on unavailable while uploading ${file}; uploading without AI tags/caption: ${addonErrorMessage(err)}`);
+      delete options.categorization;
+      delete options.auto_tagging;
+      delete options.detection;
+      const res = await cld.uploader.upload(file, options);
+      return res as unknown as CloudinaryResource;
+    }
+    throw err;
+  }
 }
 
 // ---------- reading AI results out of a resource ----------

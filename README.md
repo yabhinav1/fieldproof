@@ -126,11 +126,18 @@ Comparison fields: `beforeUrl`, `afterUrl` (same 1024×768 crop for the slider),
 | GET | `/api/reports/:id` | | report `content` (structured), `campaignImageUrl`, `assetIds`, `comparisonIds`, `htmlUrl` |
 | GET | `/api/reports/:id/html` | | self-contained HTML page (iframe it, or print to PDF) |
 | GET | `/api/reports/:id/sources` | | original assets behind the report |
+| DELETE | `/api/reports/:id` | | `{ deleted }` (source assets untouched) |
 
 `content` shape: `{ title, executiveSummary, keyNumbers[{label,value}], sites[{siteId, siteName, narrative, assetCount, heroComparisonId?}], callToAction, generatedAt }`.
 
 ### Provenance
 Every derived image (thumbnail, comparison crop, report hero, campaign image) is stored in `provenance` with the exact Cloudinary transformation string and the comparison/report it was made for. `GET /api/assets/:id` returns it all under `provenance.derivations`.
+
+## Gemini free tier notes
+
+- Default model is `gemini-3.5-flash-lite` because it is the only tier that answers reliably on a free key; the full flash models return 503 "high demand" most of the time. The backend falls back down `GEMINI_FALLBACK_MODELS` automatically and remembers busy models for two minutes.
+- Comparisons take 10–30 s and reports 30–90 s on the free tier. Generate them one at a time during a demo.
+- Cloudinary add-ons (tagging, captioning) do **not** run on the `samples/` images Cloudinary preloads into new accounts. Upload your own photos.
 
 ## Demo data
 

@@ -140,7 +140,8 @@ export async function ingestResource(db: Database, args: IngestResourceArgs): Pr
     siteMatched,
     distanceToSiteM,
     siteRadiusM,
-    phase,
+    // A manual phase is an assertion by the uploader; don't second-guess it against EXIF ordering.
+    phase: args.phaseOverride ? "unknown" : phase,
     phash,
     peers,
     siteId,

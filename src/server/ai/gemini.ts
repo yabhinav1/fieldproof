@@ -24,18 +24,46 @@ function key(): string {
   return k;
 }
 
-async function post<T>(path: string, body: unknown, attempt = 0): Promise<T> {
-  const res = await fetch(`${BASE}/${path}?key=${key()}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+const isThrottle = (status: number) => status === 429 || status === 503 || status === 504;
 
-  // Free tier is rate limited per minute; back off a few times before giving up.
-  if ((res.status === 429 || res.status === 503) && attempt < 3) {
-    const wait = 2000 * 2 ** attempt;
+/** Per-request wall clock. Busy free-tier models sometimes accept a request and then stall. */
+const REQUEST_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS ?? 90_000);
+
+/** Models that recently throttled us are skipped for a while instead of re-probed on every call. */
+const cooldownUntil = new Map<string, number>();
+const COOLDOWN_MS = 120_000;
+export function markBusy(model: string) {
+  cooldownUntil.set(model, Date.now() + COOLDOWN_MS);
+}
+export function isCoolingDown(model: string) {
+  return (cooldownUntil.get(model) ?? 0) > Date.now();
+}
+
+async function post<T>(path: string, body: unknown, attempt = 0, maxAttempts = 3, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/${path}?key=${key()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    // Timeouts and dropped sockets behave like a busy model: retry briefly, then let callers fall back.
+    const name = err instanceof Error ? err.name : "";
+    const status = name === "TimeoutError" || name === "AbortError" ? 504 : 503;
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
+      return post<T>(path, body, attempt + 1, maxAttempts, timeoutMs);
+    }
+    throw new GeminiError(status, `Gemini ${path} ${status === 504 ? "timed out" : "connection failed"}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Free tier is rate limited per minute and busy models return 503; back off briefly first.
+  if (isThrottle(res.status) && attempt < maxAttempts - 1) {
+    const wait = 1500 * 2 ** attempt;
     await new Promise((r) => setTimeout(r, wait));
-    return post<T>(path, body, attempt + 1);
+    return post<T>(path, body, attempt + 1, maxAttempts, timeoutMs);
   }
 
   if (!res.ok) {
@@ -92,8 +120,32 @@ export async function geminiGenerateJson<T>(opts: {
     },
   };
 
-  const model = env.gemini.model;
-  const res = await post<GenerateResponse>(`models/${model}:generateContent`, body);
+  // Try the primary model, then fall back down the chain when a model is throttled, busy or stalled.
+  // Models that failed recently are skipped for a couple of minutes so users don't pay the probe cost each call.
+  const fullChain = [env.gemini.model, ...env.gemini.fallbackModels.filter((m) => m !== env.gemini.model)];
+  const chain = fullChain.filter((m) => !isCoolingDown(m));
+  const candidates = chain.length ? chain : [fullChain[fullChain.length - 1]];
+  let res: GenerateResponse | undefined;
+  let model = candidates[0];
+  let lastErr: unknown;
+  for (let i = 0; i < candidates.length; i++) {
+    model = candidates[i];
+    const isLast = i === candidates.length - 1;
+    try {
+      // Non-final models get one attempt and a shorter clock so a stall costs seconds, not minutes.
+      res = await post<GenerateResponse>(`models/${model}:generateContent`, body, 0, isLast ? 3 : 1, isLast ? REQUEST_TIMEOUT_MS : Math.min(REQUEST_TIMEOUT_MS, 45_000));
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof GeminiError && isThrottle(err.status) && !isLast) {
+        markBusy(model);
+        console.warn(`[gemini] ${model} unavailable (${err.status}); falling back to ${candidates[i + 1]}`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (!res) throw lastErr instanceof Error ? lastErr : new GeminiError(503, "All Gemini models are busy.");
 
   if (res.promptFeedback?.blockReason) {
     throw new GeminiError(502, `Gemini blocked the request: ${res.promptFeedback.blockReason}`);

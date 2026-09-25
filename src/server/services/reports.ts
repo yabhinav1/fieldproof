@@ -189,6 +189,12 @@ export async function getReport(db: Database, id: string) {
   return row;
 }
 
+export async function deleteReport(db: Database, id: string) {
+  await getReport(db, id);
+  await db.delete(provenance).where(and(eq(provenance.referenceType, "report"), eq(provenance.referenceId, id)));
+  await db.delete(reports).where(eq(reports.id, id));
+}
+
 export async function listReports(db: Database, projectId: string) {
   const rows = await db
     .select({

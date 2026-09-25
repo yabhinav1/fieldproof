@@ -61,8 +61,18 @@ export const env = {
     get apiKey() {
       return process.env.GEMINI_API_KEY || undefined;
     },
+    /**
+     * Free-tier reality (Sep 2026): the full flash models answer 503 "high demand" almost every time,
+     * while the lite models respond in seconds. Lite is the default; set GEMINI_MODEL=gemini-3.8-flash
+     * on a paid tier for higher-quality analysis.
+     */
     get model() {
-      return process.env.GEMINI_MODEL || "gemini-3.8-flash";
+      return process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    },
+    /** Tried in order when the primary model is throttled, busy or stalls. */
+    get fallbackModels(): string[] {
+      const raw = process.env.GEMINI_FALLBACK_MODELS ?? "gemini-3.1-flash-lite,gemini-3.8-flash";
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
     },
     get embeddingModel() {
       return process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-2";

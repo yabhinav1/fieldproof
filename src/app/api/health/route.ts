@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { env } from "@/server/env";
 import { ok, route } from "@/server/http";
-import { aiAvailable } from "@/server/ai/client";
 import { embeddingsAvailable } from "@/server/ai/embeddings";
+import { llmAvailable } from "@/server/ai/structured";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +18,10 @@ export const GET = route(async () => {
       cloudinary: env.cloudinary.configured,
       cloudinaryAutoTagging: env.cloudinary.autoTagging || null,
       cloudinaryCaptioning: env.cloudinary.captioning,
-      anthropic: aiAvailable(),
+      llm: llmAvailable(),
+      llmProvider: env.llmProvider,
       embeddings: embeddingsAvailable(),
+      embeddingProvider: env.embeddingProvider,
     },
     time: new Date().toISOString(),
   });

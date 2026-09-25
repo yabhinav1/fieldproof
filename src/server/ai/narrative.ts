@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getAnthropic, modelId } from "./client";
+import { generateStructured } from "./structured";
 
 const NarrativeSchema = z.object({
   title: z.string().describe("Report title, at most 12 words."),
@@ -48,26 +47,11 @@ export interface NarrativeFacts {
 }
 
 export async function writeNarrative(facts: NarrativeFacts): Promise<{ result: NarrativeResult; model: string }> {
-  const client = getAnthropic();
-
-  const response = await client.messages.parse({
-    model: modelId(),
-    max_tokens: 6000,
+  const { result, model, provider } = await generateStructured({
     system: SYSTEM_PROMPT,
-    output_config: { effort: "medium", format: zodOutputFormat(NarrativeSchema) },
-    messages: [
-      {
-        role: "user",
-        content: `Write the impact report from these facts.\n\n${JSON.stringify(facts, null, 2)}`,
-      },
-    ],
+    schema: NarrativeSchema,
+    maxTokens: 6000,
+    segments: [{ text: `Write the impact report from these facts.\n\n${JSON.stringify(facts, null, 2)}` }],
   });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error("Model declined to write this report.");
-  }
-  if (!response.parsed_output) {
-    throw new Error("Model returned no structured narrative.");
-  }
-  return { result: response.parsed_output, model: response.model };
+  return { result, model: `${provider}/${model}` };
 }

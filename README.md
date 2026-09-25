@@ -17,12 +17,16 @@ curl http://localhost:3000/api/health
 
 With no `DATABASE_URL`, an embedded Postgres (PGlite, with pgvector) is created in `./.pglite`. Set `DATABASE_URL` to a Neon connection string to use a real database; migrations run automatically on boot.
 
-| Integration | Env | Without it |
-|---|---|---|
-| Cloudinary | `CLOUDINARY_URL` | Uploads, ingest, comparisons and reports return 503 |
-| Cloudinary add-ons | `CLOUDINARY_AUTO_TAGGING`, `CLOUDINARY_CAPTIONING` | No AI tags / captions; EXIF, GPS, phash still work |
-| Anthropic | `ANTHROPIC_API_KEY` | Comparisons and report narratives return 503 |
-| Voyage AI | `VOYAGE_API_KEY` | Search falls back to keyword-only |
+Everything runs on free tiers. No card is needed for any of it.
+
+| Integration | Env | Cost | Without it |
+|---|---|---|---|
+| Cloudinary | `CLOUDINARY_URL` | free | Uploads, ingest, comparisons and reports return 503 |
+| Cloudinary add-ons | `CLOUDINARY_AUTO_TAGGING`, `CLOUDINARY_CAPTIONING` | free quota | No AI tags / captions; EXIF, GPS, phash still work |
+| Gemini (Google AI Studio) | `GEMINI_API_KEY` | free | Comparisons and report narratives return 503; search is keyword-only |
+| Anthropic (alternative to Gemini) | `ANTHROPIC_API_KEY` | paid | Not needed when Gemini is set |
+| Voyage AI (alternative embeddings) | `VOYAGE_API_KEY` | free | Not needed when Gemini is set |
+| Neon Postgres | `DATABASE_URL` | free | Embedded PGlite is used (local only) |
 
 ## Scripts
 
@@ -44,8 +48,8 @@ Browser ──upload──► Cloudinary ◄──explicit / url──┐
                  └── services (src/server/services/*)
                        ├── Postgres via Drizzle (Neon in prod, PGlite locally)
                        ├── Cloudinary SDK: tagging, captioning, EXIF, phash, transformations, overlays
-                       ├── Claude vision (structured outputs): before/after assessment, report narrative
-                       └── Voyage embeddings + pgvector: hybrid semantic + keyword search
+                       ├── Gemini or Claude vision (JSON-schema outputs): before/after assessment, report narrative
+                       └── Gemini or Voyage embeddings + pgvector: hybrid semantic + keyword search
 ```
 
 Key directories:
@@ -53,7 +57,8 @@ Key directories:
 - `src/server/db/schema.ts` — tables: projects, sites, assets, comparisons, reports, provenance
 - `src/server/services/ingest.ts` — upload → EXIF → site by GPS → phase by date → verification → embedding
 - `src/server/lib/verify.ts` — duplicate (phash), GPS, date and phase-order checks
-- `src/server/ai/compare.ts`, `narrative.ts` — Claude calls with Zod-validated structured output
+- `src/server/ai/structured.ts` — one entry point for schema-constrained generation; dispatches to Gemini or Anthropic
+- `src/server/ai/compare.ts`, `narrative.ts` — the two prompts, Zod-validated on the way back
 - `src/server/cloudinary.ts` — all Cloudinary usage; every derived URL is recorded in `provenance`
 
 Frontend lives in `src/app/(app)` and `src/components` (not started yet). Backend code never imports from there.

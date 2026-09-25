@@ -9,6 +9,9 @@ function flag(name: string, fallback = false): boolean {
   return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }
 
+export type LlmProvider = "anthropic" | "gemini";
+export type EmbeddingProvider = "voyage" | "gemini";
+
 export const env = {
   get databaseUrl() {
     return process.env.DATABASE_URL || undefined;
@@ -54,6 +57,18 @@ export const env = {
     },
   },
 
+  gemini: {
+    get apiKey() {
+      return process.env.GEMINI_API_KEY || undefined;
+    },
+    get model() {
+      return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    },
+    get embeddingModel() {
+      return process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001";
+    },
+  },
+
   voyage: {
     get apiKey() {
       return process.env.VOYAGE_API_KEY || undefined;
@@ -61,6 +76,27 @@ export const env = {
     get model() {
       return process.env.VOYAGE_MODEL || "voyage-3.5-lite";
     },
+  },
+
+  /**
+   * Which model provider handles vision comparisons and report narratives.
+   * Explicit LLM_PROVIDER wins; otherwise the first configured key in order anthropic, gemini.
+   */
+  get llmProvider(): LlmProvider | null {
+    const forced = process.env.LLM_PROVIDER?.toLowerCase();
+    if (forced === "anthropic" || forced === "gemini") return forced;
+    if (this.anthropic.apiKey) return "anthropic";
+    if (this.gemini.apiKey) return "gemini";
+    return null;
+  },
+
+  /** Which provider produces search embeddings. Voyage first, then Gemini. */
+  get embeddingProvider(): EmbeddingProvider | null {
+    const forced = process.env.EMBEDDING_PROVIDER?.toLowerCase();
+    if (forced === "voyage" || forced === "gemini") return forced;
+    if (this.voyage.apiKey) return "voyage";
+    if (this.gemini.apiKey) return "gemini";
+    return null;
   },
 
   get appUrl() {

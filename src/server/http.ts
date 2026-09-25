@@ -3,6 +3,8 @@ import { ZodError, type ZodType } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { CloudinaryNotConfiguredError } from "./cloudinary";
 import { AnthropicNotConfiguredError } from "./ai/client";
+import { LlmNotConfiguredError } from "./ai/structured";
+import { GeminiError } from "./ai/gemini";
 
 /** Error carrying an HTTP status; throw it from services to get a clean JSON response. */
 export class HttpError extends Error {
@@ -75,8 +77,12 @@ export function route<Ctx = { params: Promise<Record<string, string>> }>(handler
 
 export function errorToResponse(err: unknown): Response {
   if (err instanceof HttpError) return fail(err.status, err.message, err.details);
-  if (err instanceof CloudinaryNotConfiguredError || err instanceof AnthropicNotConfiguredError) {
+  if (err instanceof CloudinaryNotConfiguredError || err instanceof AnthropicNotConfiguredError || err instanceof LlmNotConfiguredError) {
     return fail(503, err.message);
+  }
+  if (err instanceof GeminiError) {
+    if (err.status === 429) return fail(429, "Gemini free-tier rate limit hit; wait a minute and retry.");
+    return fail(err.status >= 500 || err.status === 503 ? 503 : 502, err.message);
   }
   if (err instanceof Anthropic.RateLimitError) return fail(429, "AI provider rate limit; retry shortly.");
   if (err instanceof Anthropic.AuthenticationError) return fail(503, "AI provider rejected the API key.");

@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { getAnthropic, modelId } from "./client";
+import { generateStructured } from "./structured";
 import type { ComparisonMetric } from "../db/schema";
 
 export const METRIC_NAMES = [
@@ -49,40 +48,24 @@ export interface CompareInput {
   projectName?: string;
 }
 
-/** Runs the vision comparison. Throws Anthropic SDK errors unchanged so callers can map them. */
+/** Runs the vision comparison through whichever provider is configured. */
 export async function compareImages(input: CompareInput): Promise<{ result: ComparisonResult; model: string }> {
-  const client = getAnthropic();
   const context = [input.projectName && `Project: ${input.projectName}`, input.siteName && `Site: ${input.siteName}`]
     .filter(Boolean)
     .join("\n");
 
-  const response = await client.messages.parse({
-    model: modelId(),
-    max_tokens: 4000,
+  const { result, model, provider } = await generateStructured({
     system: SYSTEM_PROMPT,
-    output_config: { effort: "medium", format: zodOutputFormat(ComparisonSchema) },
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: `${context ? context + "\n\n" : ""}BEFORE:` },
-          { type: "image", source: { type: "url", url: input.beforeUrl } },
-          { type: "text", text: "AFTER:" },
-          { type: "image", source: { type: "url", url: input.afterUrl } },
-          { type: "text", text: "Compare the two photos and fill in the structured result." },
-        ],
-      },
+    schema: ComparisonSchema,
+    maxTokens: 4000,
+    segments: [
+      { text: `${context ? context + "\n\n" : ""}BEFORE:`, imageUrl: input.beforeUrl },
+      { text: "AFTER:", imageUrl: input.afterUrl },
+      { text: "Compare the two photos and fill in the structured result." },
     ],
   });
 
-  if (response.stop_reason === "refusal") {
-    throw new Error(`Model declined to compare these images${response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : ""}.`);
-  }
-  if (!response.parsed_output) {
-    throw new Error("Model returned no structured comparison.");
-  }
-
-  return { result: normalise(response.parsed_output), model: response.model };
+  return { result: normalise(result), model: `${provider}/${model}` };
 }
 
 /** Guarantees exactly one entry per metric, in canonical order. */

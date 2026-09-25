@@ -35,6 +35,7 @@ Everything runs on free tiers. No card is needed for any of it.
 | `npm run dev` | Next.js dev server |
 | `npm run typecheck` / `npm test` | Type check / run unit + PGlite integration tests |
 | `npm run seed` | Create the Green Yamuna demo project and sites |
+| `npm run photos -- --curated data/curated.json` | Download the curated demo photo set (64 openly licensed photos from Wikimedia Commons) into `data/` |
 | `npm run upload -- --project green-yamuna --dir ./data` | Upload a folder to Cloudinary and ingest it (see script header for folder conventions) |
 | `npm run cloudinary:setup` | Register named transformations and structured metadata fields in Cloudinary |
 | `npm run db:generate` | Regenerate SQL migrations after editing `src/server/db/schema.ts` |
@@ -143,9 +144,11 @@ Every derived image (thumbnail, comparison crop, report hero, campaign image) is
 
 ```bash
 npm run seed
-# put photos under ./data/<site folder>/<before|during|after>/*.jpg, e.g. data/site-a/before/IMG_001.jpg
+npm run photos -- --curated data/curated.json   # 64 reviewed CC-licensed photos → data/site-{a,b,c}/{before,during,after}
 npm run upload -- --project green-yamuna --dir ./data
 ```
+
+`data/curated.json` is the reviewed list (title, site, phase, licence, author); `data/ATTRIBUTION.md` must ship with any demo that shows the photos. The images themselves are gitignored. To find more candidates, edit `data/manifest.json` and run `npm run photos` without `--curated`.
 
 Folder names that start like a site name ("site-a", "Site A") pin the site; a `before|during|after` folder pins the phase. Otherwise GPS and EXIF decide and anything ambiguous is flagged for review.
 

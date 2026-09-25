@@ -1,0 +1,68 @@
+# Photo attribution
+
+All photos are from Wikimedia Commons under the licence listed (CC BY, CC BY-SA, CC0, public domain or GODL-India). Keep this file with the dataset and show it in the app's credits.
+
+- `site-a/before/Mutha-River-view-from-bridge-at-Pune-Municipal-Corporation-2-.jpg.jpg` — भाविका राका — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Mutha_River_view_from_bridge_at_Pune_Municipal_Corporation_(2).jpg
+- `site-a/before/Ram-river-flora-got-buried-in-debris-Baner-STP-Pune.jpg.jpg` — RTmhasvai — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Ram_river_flora_got_buried_in_debris,_Baner_STP,_Pune.jpg
+- `site-a/before/Stresses-seen-from-bridge-over-Ram-river-near-Suryadutta-college-Bavdhan-Khurda-.jpg` — RTmhasvai — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Stresses_seen_from_bridge_over_Ram_river,_near_Suryadutta_college,Bavdhan_Khurda,_Pune.jpg
+- `site-a/before/Mula-Mutha-River-at-Loni-Kalbhor.jpg.jpg` — Prasanna Jogdeo — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Mula-Mutha_River_at_Loni_Kalbhor.jpg
+- `site-a/before/Mula-River-near-Jupiter-Hospital-Baner-Pune.jpg.jpg` — तुषार सरोदे — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Mula_River_near_Jupiter_Hospital,_Baner,_Pune.jpg
+- `site-a/before/Confluence-of-Ambil-Odha-and-Mutha-River-as-seen-from-the-riverbank-in-Pune.jpg.jpg` — DesiBoy101 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Confluence_of_Ambil_Odha_and_Mutha_River_as_seen_from_the_riverbank_in_Pune.jpg
+- `site-a/before/Confluence-of-Ambil-Odha-and-Mutha-River-as-seen-from-the-nearby-riverbank-in-Pu.jpg` — DesiBoy101 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Confluence_of_Ambil_Odha_and_Mutha_River_as_seen_from_the_nearby_riverbank_in_Pune.jpg
+- `site-a/before/View-of-polluted-Mutha-River-from-Sangam-Bridge-connected-to-Dr.-Babasaheb-Ambed.jpg` — DesiBoy101 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:View_of_polluted_Mutha_River_from_Sangam_Bridge_connected_to_Dr._Babasaheb_Ambedkar_Road.jpg
+- `site-a/during/Prakash-Ranjan-with-Sushil-Upadhyay-in-Shakarpur.jpg.jpg` — Prakash Sandilya — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Prakash_Ranjan_with_Sushil_Upadhyay_in_Shakarpur.jpg
+- `site-a/during/Prakash-Ranjan-BJP-in-Swachh-Bharat-Abhiyan.jpg.jpg` — Prakash Sandilya — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Prakash_Ranjan_BJP_in_Swachh_Bharat_Abhiyan.jpg
+- `site-a/during/Swach-Bharat-Abhiyana-in-Civil-Court-premises-Rayagada.JPG.jpg` — Hpsatapathy — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Swach_Bharat_Abhiyana_in_Civil_Court_premises,_Rayagada.JPG
+- `site-a/during/Piyush-goel-Rajendra-K.-Pachauri-participating-at-the-Swatch-Bharat-Mission..JPG.jpg` — Abhinav619 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Piyush_goel,_Rajendra_K._Pachauri_participating_at_the_Swatch_Bharat_Mission..JPG
+- `site-a/during/Children-learn-sawch-bharat.jpg.jpg` — Narpat Deora — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Children_learn_sawch_bharat.jpg
+- `site-a/during/SBM-Haryana-.jpg.jpg` — Tejinderbidlan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:SBM(Haryana).jpg
+- `site-a/after/Sunset-03.jpg.jpg` — Poojamangrolia — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Sunset_03.jpg
+- `site-a/after/The-Yamuna.jpg.jpg` — ShashwatJain99 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:The_Yamuna.jpg
+- `site-b/before/Street-views-from-car-in-Hyderabad-34538-.jpg.jpg` — Syced — CC0 — https://commons.wikimedia.org/wiki/File:Street_views_from_car_in_Hyderabad_(34538).jpg
+- `site-b/before/Garbage-on-a-roadside.JPG.jpg` — Surya Prakash.S.A. — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Garbage_on_a_roadside.JPG
+- `site-b/during/India-Kids-Planting-trees-for-her-future-4040009491-.jpg.jpg` — McKay Savage from London, UK — CC BY 2.0 — https://commons.wikimedia.org/wiki/File:India_-_Kids_-_Planting_trees_for_her_future_(4040009491).jpg
+- `site-b/during/Guinness-World-Records-for-Most-Trees-Planted-broken-in-Oct-2010-and-2012.jpg.jpg` — Drukpa Publications Pvt. Ltd. — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:Guinness_World_Records_for_%22Most_Trees_Planted%22_broken_in_Oct_2010_and_2012.jpg
+- `site-b/during/Children-planting-in-Chalakudy-River-bank.JPG.jpg` — Zabna — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Children_planting_in_Chalakudy_River_bank.JPG
+- `site-b/during/Jimmy-Rakesh-Planting-Trees.jpg.jpg` — Jimmy Rakesh — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Jimmy_Rakesh_Planting_Trees.jpg
+- `site-b/during/Jimmy-Rakesh-Planting-Tree.jpg.jpg` — Jimmy Rakesh — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Jimmy_Rakesh_Planting_Tree.jpg
+- `site-c/before/Painted-Snipe-DSCN5746.jpg.jpg` — T. R. Shankar Raman — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Painted_Snipe_DSCN5746.jpg
+- `site-c/before/Somewhere-in-Bihar-2-32958325923-.jpg.jpg` — juggadery — CC BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Somewhere_in_Bihar_2_(32958325923).jpg
+- `site-c/before/Noyyal-River-in-Tiruppur-JEG0330.jpg.jpg` — PJeganathan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Noyyal_River_in_Tiruppur_JEG0330.jpg
+- `site-c/before/Noyyal-River-in-Tiruppur-JEG0329.jpg.jpg` — PJeganathan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Noyyal_River_in_Tiruppur_JEG0329.jpg
+- `site-c/before/Noyyal-River-in-Tiruppur-JEG0331.jpg.jpg` — PJeganathan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Noyyal_River_in_Tiruppur_JEG0331.jpg
+- `site-c/before/Noyyal-River-in-Tiruppur-JEG0332.jpg.jpg` — PJeganathan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Noyyal_River_in_Tiruppur_JEG0332.jpg
+- `site-c/during/National-cadet-core-Jabalpur.jpg.jpg` — RAGHAV shubham Pal — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:National_cadet_core_Jabalpur.jpg
+- `site-c/during/Prathyaksha-Distributing-Hand-Bills-about-Cleanliness-and-Performing-Street-Play.jpg` — Jayanth92 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Prathyaksha_Distributing_Hand_Bills_about_Cleanliness_and_Performing_Street_Play_in_Indian_Slum.jpg
+- `site-c/during/Dr.Kiran-Bedi-with-Sanitation-Workers-during-a-cleaning-campaign-at-Puducherry.j.jpg` — Prabu kanna — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Dr.Kiran_Bedi_with_Sanitation_Workers_during_a_cleaning_campaign_at_Puducherry.jpg
+- `site-c/during/Swachh-Bharat-Abhiyan-July-2016-0-.jpg.jpg` — Baranagore Ramakrishna Mission Ashrama High School — Public domain — https://commons.wikimedia.org/wiki/File:Swachh_Bharat_Abhiyan,_July_2016(0).jpg
+- `site-c/after/Recycle-bins-near-Leh-4336595791-.jpg.jpg` — Kiran Jonnalagadda from Bangalore, India — CC BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Recycle_bins_near_Leh_(4336595791).jpg
+- `site-c/after/Photograph-of-public-waste-segregation-bins-Amritsar-Punjab-India-8-April-2023.j.jpg` — MaplesyrupSushi — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Photograph_of_public-waste_segregation_bins,_Amritsar,_Punjab,_India,_8_April_2023.jpg
+- `site-c/after/Bottles-in-recycle-bins-2010-.jpg.jpg` — Thangal.muthu — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bottles_in_recycle_bins_(2010).jpg
+- `site-c/after/A-recycle-bin-in-the-Kangla-Fort-in-Imphal.jpg.jpg` — Haoreima — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:A_recycle_bin_in_the_Kangla_Fort_in_Imphal.jpg
+- `site-a/after/Sabarmati-Riverfront-Jan-2011-1.JPG.jpg` — Hardik Jadeja — CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Sabarmati_Riverfront_Jan_2011_1.JPG
+- `site-a/after/Ram-Ki-Paidi-waterfront.jpg.jpg` — Vanshiikaa — CC0 — https://commons.wikimedia.org/wiki/File:Ram_Ki_Paidi_waterfront.jpg
+- `site-a/after/Natural-beauty-flooded-coast-yamuna.jpg.jpg` — Abhisheku598 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Natural_beauty_flooded_coast_yamuna.jpg
+- `site-a/after/Shyamol-Bangla-A-River-Side.jpg.jpg` — Saydur Rahaman — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Shyamol_Bangla_-_A_River_Side.jpg
+- `site-a/after/Pink-flowers-in-yamuna.jpg.jpg` — Entirology — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Pink_flowers_in_yamuna.jpg
+- `site-b/before/Farms-land-Chamarajanagar-panoramio-2-.jpg.jpg` — Jaseem Hamza — CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Farms_land_Chamarajanagar_-_panoramio_(2).jpg
+- `site-b/before/Dried-up-Pravara-riverbed.jpg.jpg` — Vinay Kanawade — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Dried_up_Pravara_riverbed.jpg
+- `site-b/before/Pravara-riverbed.jpg.jpg` — Vinay Kanawade — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Pravara_riverbed.jpg
+- `site-b/during/Devendra-sahu-trees.jpg.jpg` — Devendrak007 — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Devendra_sahu_trees.jpg
+- `site-b/during/Income-tax-tree-plantation-program.jpg.jpg` — Shankar Namdeo Uthale - Patil — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Income_tax_tree_plantation_program.jpg
+- `site-b/during/Project-Oneness-Vann-Site-an-Tree-Cluster-Created-by-Sant-Nirankari-Mission-A-vi.jpg` — Sant Nirankari Charitable Foundation — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Project-_Oneness_Vann_Site_an_Tree_Cluster_Created_by_Sant_Nirankari_Mission_(A_view_of_planting_trees).jpg
+- `site-b/after/Project-Oneness-Vann-Site-an-Tree-Cluster-Created-by-Sant-Nirankari-Mission-on-d.jpg` — Sant Nirankari Charitable Foundation — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Project-_Oneness_Vann_Site_an_Tree_Cluster_Created_by_Sant_Nirankari_Mission_(on_distance_of_4x4fts).jpg
+- `site-b/after/Project-Oneness-Vann-Site-an-Tree-Cluster-Created-by-Sant-Nirankari-Mission-Cano.jpg` — Sant Nirankari Charitable Foundation — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Project-_Oneness_Vann_Site_an_Tree_Cluster_Created_by_Sant_Nirankari_Mission_(Canopy_of_Trees).jpg
+- `site-b/after/Project-Oneness-Vann-Site-an-Tree-Cluster-Created-by-Sant-Nirankari-Mission-Chan.jpg` — Sant Nirankari Charitable Foundation — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Project-_Oneness_Vann_Site_an_Tree_Cluster_Created_by_Sant_Nirankari_Mission_(Changing_in_a_mini_forest).jpg
+- `site-b/after/Bangalore-sidewalk-trees-IMG20180910084944.jpg.jpg` — T. R. Shankar Raman — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Bangalore_sidewalk_trees_IMG20180910084944.jpg
+- `site-b/after/Miyawaki-Forest-at-Sarovaram-Bio-Park-IMG-20260712-083817783.jpg.jpg` — Ranjithsiji — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Miyawaki_Forest_at_Sarovaram_Bio_Park_IMG_20260712_083817783.jpg
+- `site-b/after/Asramam-Miyawaki-Forest.jpg.jpg` — Akhilan — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Asramam_Miyawaki_Forest.jpg
+- `site-b/after/Miyawaki-forest-at-Edappally-Eranakulam-01.jpg.jpg` — Vijayanrajapuram — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Miyawaki_forest_at_Edappally_Eranakulam_01.jpg
+- `site-c/before/Hyderabad-Street-Garbage-collection-2005.jpg.jpg` — melgupta — CC BY-SA 2.0 — https://commons.wikimedia.org/wiki/File:Hyderabad_Street_Garbage_collection_2005.jpg
+- `site-c/after/India-Weekend-at-the-Farm-House-36-yes-crocs-ARE-cool-2558081064-.jpg.jpg` — McKay Savage from London, UK — CC BY 2.0 — https://commons.wikimedia.org/wiki/File:India_-_Weekend_at_the_Farm_House_-_36_-_yes,_crocs_ARE_cool_(2558081064).jpg
+- `site-a/after/Sabarmati-Riverfront-Jan-2011.JPG.jpg` — Hardik jadeja — CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Sabarmati_Riverfront_Jan_2011.JPG
+- `site-b/during/Afforestation-at-Kanakakunnu.jpg.jpg` — BemanHerish — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Afforestation_at_Kanakakunnu.jpg
+- `site-c/during/Cleanliness-Drive-Saint-Martins-Island-2025-02-12-PID-0003541-.jpg.jpg` — Press Information Department — Public domain — https://commons.wikimedia.org/wiki/File:Cleanliness_Drive_Saint_Martins_Island_2025-02-12_(PID-0003541).jpg
+- `site-c/after/Dustbins-in-Bhubaneswar.jpg.jpg` — Soumendra Kumar Sahoo — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Dustbins_in_Bhubaneswar.jpg
+- `site-c/after/Hills-have-eyes-use-us.jpg.jpg` — Marajozkee — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Hills_have_eyes_use_us.jpg
+- `site-c/after/Dustbin-2.jpg.jpg` — Vinoth offl — CC BY-SA 4.0 — https://commons.wikimedia.org/wiki/File:Dustbin_2.jpg
+- `site-c/after/These-boxes-are-not-empty.jpg.jpg` — Ijohnnywalker — CC BY-SA 3.0 — https://commons.wikimedia.org/wiki/File:These_boxes_are_not_empty.jpg

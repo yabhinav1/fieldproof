@@ -1,0 +1,59 @@
+{
+  "site-a": {
+    "before": {
+      "categories": ["Category:River Pollution in Pune district", "Category:Pollution of Bagmati river"],
+      "search": ["river bank plastic waste India"],
+      "max": 8,
+      "exclude": ["map", "diagram", "poster", "logo"]
+    },
+    "during": {
+      "categories": ["Category:Swachh Bharat Mission"],
+      "search": ["river cleaning volunteers India", "ghat cleaning drive"],
+      "max": 8,
+      "exclude": ["logo", "poster", "stamp", "map", "screenshot", "toilet"]
+    },
+    "after": {
+      "categories": ["Category:Yamuna River"],
+      "search": ["Yamuna ghat Delhi morning", "clean river bank Delhi"],
+      "max": 8,
+      "exclude": ["map", "bridge", "metro", "expressway", "satellite", "aerial", "painting"]
+    }
+  },
+  "site-b": {
+    "before": {
+      "categories": ["Category:Litter in India"],
+      "search": ["barren land Delhi", "degraded land India dry"],
+      "max": 8,
+      "exclude": ["map", "poster", "logo"]
+    },
+    "during": {
+      "categories": ["Category:Tree planting in India", "Category:Van Mahotsav", "Category:Tree planting at Thrissur Town Hall"],
+      "search": ["sapling planting drive India"],
+      "max": 8,
+      "exclude": ["logo", "poster", "stamp", "map", "screenshot"]
+    },
+    "after": {
+      "search": ["Miyawaki forest India", "young trees plantation India", "urban forest India saplings growing", "afforestation India"],
+      "max": 8,
+      "exclude": ["map", "poster", "logo", "diagram"]
+    }
+  },
+  "site-c": {
+    "before": {
+      "categories": ["Category:Plastic pollution in India"],
+      "max": 8,
+      "exclude": ["map", "poster", "logo", "diagram", "graph"]
+    },
+    "during": {
+      "categories": ["Category:Swachh Bharat Mission"],
+      "search": ["waste collection volunteers India", "cleanliness drive India students"],
+      "max": 8,
+      "exclude": ["logo", "poster", "stamp", "map", "screenshot", "toilet"]
+    },
+    "after": {
+      "search": ["waste segregation bins India", "dustbins India segregation dry wet", "recycling bins India"],
+      "max": 8,
+      "exclude": ["map", "poster", "logo", "diagram"]
+    }
+  }
+}

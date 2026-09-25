@@ -14,7 +14,8 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "upload": "tsx scripts/upload-folder.ts",
-    "cloudinary:setup": "tsx scripts/cloudinary-setup.ts"
+    "cloudinary:setup": "tsx scripts/cloudinary-setup.ts",
+    "photos": "tsx scripts/fetch-commons-photos.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

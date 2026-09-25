@@ -59,10 +59,12 @@ async function post<T>(path: string, body: unknown, attempt = 0, maxAttempts = 3
     throw new GeminiError(status, `Gemini ${path} ${status === 504 ? "timed out" : "connection failed"}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Free tier is rate limited per minute and busy models return 503; back off briefly first.
+  // Free tier is rate limited per minute and busy models return 503; back off before retrying,
+  // honouring Retry-After when the API sends one.
   if (isThrottle(res.status) && attempt < maxAttempts - 1) {
-    const wait = 1500 * 2 ** attempt;
-    await new Promise((r) => setTimeout(r, wait));
+    const retryAfter = Number(res.headers.get("retry-after")) * 1000;
+    const wait = Math.max(Number.isFinite(retryAfter) ? retryAfter : 0, 2500 * 2 ** attempt);
+    await new Promise((r) => setTimeout(r, Math.min(wait, 30_000)));
     return post<T>(path, body, attempt + 1, maxAttempts, timeoutMs);
   }
 
@@ -123,26 +125,34 @@ export async function geminiGenerateJson<T>(opts: {
   // Try the primary model, then fall back down the chain when a model is throttled, busy or stalled.
   // Models that failed recently are skipped for a couple of minutes so users don't pay the probe cost each call.
   const fullChain = [env.gemini.model, ...env.gemini.fallbackModels.filter((m) => m !== env.gemini.model)];
-  const chain = fullChain.filter((m) => !isCoolingDown(m));
-  const candidates = chain.length ? chain : [fullChain[fullChain.length - 1]];
   let res: GenerateResponse | undefined;
-  let model = candidates[0];
+  let model = fullChain[0];
   let lastErr: unknown;
-  for (let i = 0; i < candidates.length; i++) {
-    model = candidates[i];
-    const isLast = i === candidates.length - 1;
-    try {
-      // Non-final models get one attempt and a shorter clock so a stall costs seconds, not minutes.
-      res = await post<GenerateResponse>(`models/${model}:generateContent`, body, 0, isLast ? 3 : 1, isLast ? REQUEST_TIMEOUT_MS : Math.min(REQUEST_TIMEOUT_MS, 45_000));
-      break;
-    } catch (err) {
-      lastErr = err;
-      if (err instanceof GeminiError && isThrottle(err.status) && !isLast) {
-        markBusy(model);
-        console.warn(`[gemini] ${model} unavailable (${err.status}); falling back to ${candidates[i + 1]}`);
-        continue;
+
+  // Two passes over the chain. The first skips models that throttled us recently; if every model is
+  // busy (typical when several requests land inside one free-tier minute) we pause and try them all again.
+  for (let pass = 0; pass < 2 && !res; pass++) {
+    const candidates = pass === 0 ? fullChain.filter((m) => !isCoolingDown(m)) : fullChain;
+    if (!candidates.length) continue;
+    if (pass === 1) await new Promise((r) => setTimeout(r, 20_000));
+    for (let i = 0; i < candidates.length; i++) {
+      model = candidates[i];
+      const isLast = i === candidates.length - 1;
+      try {
+        // Non-final models get one attempt and a shorter clock so a stall costs seconds, not minutes;
+        // the final model gets real backoff because the alternative is failing the request.
+        res = await post<GenerateResponse>(`models/${model}:generateContent`, body, 0, isLast ? 3 : 1, isLast ? REQUEST_TIMEOUT_MS : Math.min(REQUEST_TIMEOUT_MS, 45_000));
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err instanceof GeminiError && isThrottle(err.status)) {
+          markBusy(model);
+          if (!isLast) console.warn(`[gemini] ${model} unavailable (${err.status}); falling back to ${candidates[i + 1]}`);
+          else if (pass === 0) console.warn(`[gemini] every model busy; pausing before a second pass`);
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
   }
   if (!res) throw lastErr instanceof Error ? lastErr : new GeminiError(503, "All Gemini models are busy.");

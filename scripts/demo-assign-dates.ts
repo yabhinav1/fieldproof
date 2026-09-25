@@ -54,7 +54,9 @@ async function main() {
       for (let i = 0; i < n; i++) {
         const a = rows[i];
         const inWindow = a.capturedAt && a.capturedAt.getTime() >= start && a.capturedAt.getTime() <= end;
-        if (inWindow) continue;
+        // An in-window date that only came from the upload timestamp (no EXIF) still gets spread out.
+        const uploadDateOnly = a.flags.some((f) => f.code === "no_capture_date");
+        if (inWindow && !uploadDateOnly) continue;
         // Spread evenly through the window, at a consistent 10:30 local-ish time.
         const t = start + ((end - start) * (i + 1)) / (n + 1);
         const d = new Date(t);

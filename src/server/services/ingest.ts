@@ -212,7 +212,8 @@ export async function ingestResource(db: Database, args: IngestResourceArgs): Pr
       values.phase = existing.phase;
       values.phaseOverridden = true;
     }
-    if (existing.flags.some((f) => f.code === "demo_date") && !capturedAt) {
+    // A demo-fixture date was set on purpose; a re-analysis must not swap it for EXIF or upload time.
+    if (existing.flags.some((f) => f.code === "demo_date")) {
       values.capturedAt = existing.capturedAt;
     }
     const keptFlags = existing.flags.filter((f) => f.code === "demo_date");

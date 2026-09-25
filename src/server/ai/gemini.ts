@@ -170,27 +170,34 @@ function clean(node: unknown): unknown {
 
 // ---------- embeddings ----------
 
-interface BatchEmbedResponse {
-  embeddings: Array<{ values: number[] }>;
+interface EmbedResponse {
+  embedding: { values: number[] };
 }
 
+/**
+ * Embeds texts one request each with a small concurrency cap. The single-item endpoint is the
+ * one every embedding model generation supports; free-tier limits are per minute, so we stay gentle.
+ */
 export async function geminiEmbed(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY", dimensions: number): Promise<number[][]> {
   if (!texts.length) return [];
   const model = env.gemini.embeddingModel;
-  const out: number[][] = [];
-  // API limit is 100 per batch; keep batches modest for the free tier.
-  for (let i = 0; i < texts.length; i += 50) {
-    const chunk = texts.slice(i, i + 50);
-    const res = await post<BatchEmbedResponse>(`models/${model}:batchEmbedContents`, {
-      requests: chunk.map((text) => ({
+  const out: number[][] = new Array(texts.length);
+  const CONCURRENCY = 4;
+  let next = 0;
+
+  async function worker() {
+    while (next < texts.length) {
+      const i = next++;
+      const res = await post<EmbedResponse>(`models/${model}:embedContent`, {
         model: `models/${model}`,
-        content: { parts: [{ text }] },
+        content: { parts: [{ text: texts[i] }] },
         taskType,
         outputDimensionality: dimensions,
-      })),
-    });
-    for (const e of res.embeddings) out.push(normalise(e.values));
+      });
+      out[i] = normalise(res.embedding.values);
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
   return out;
 }
 

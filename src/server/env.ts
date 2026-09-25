@@ -62,10 +62,10 @@ export const env = {
       return process.env.GEMINI_API_KEY || undefined;
     },
     get model() {
-      return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+      return process.env.GEMINI_MODEL || "gemini-3.8-flash";
     },
     get embeddingModel() {
-      return process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001";
+      return process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-2";
     },
   },
 

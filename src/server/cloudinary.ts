@@ -121,22 +121,7 @@ export async function enrichResource(publicId: string): Promise<CloudinaryResour
   if (env.cloudinary.captioning) {
     options.detection = "captioning";
   }
-  try {
-    const res = (await cld.uploader.explicit(publicId, options)) as UploadApiResponse;
-    return res as unknown as CloudinaryResource;
-  } catch (err) {
-    // Free add-on quotas are small (e.g. 50 taggings/month). When one is exhausted or not registered,
-    // keep the asset: re-run with metadata only so EXIF, phash and colours still land.
-    if (isAddonError(err) && (options.categorization || options.detection)) {
-      console.warn(`[cloudinary] add-on unavailable for ${publicId}; ingesting without AI tags/caption: ${addonErrorMessage(err)}`);
-      delete options.categorization;
-      delete options.auto_tagging;
-      delete options.detection;
-      const res = (await cld.uploader.explicit(publicId, options)) as UploadApiResponse;
-      return res as unknown as CloudinaryResource;
-    }
-    throw err;
-  }
+  return withAddonFallback(publicId, options, (o) => cld.uploader.explicit(publicId, o) as Promise<UploadApiResponse>);
 }
 
 function addonErrorMessage(err: unknown): string {
@@ -145,7 +130,45 @@ function addonErrorMessage(err: unknown): string {
 }
 
 function isAddonError(err: unknown): boolean {
-  return /quota|limit|exceed|not (registered|subscribed|enabled)|add-?on|addon|categorization|detection/i.test(addonErrorMessage(err));
+  return /quota|limit|exceed|not (registered|subscribed|enabled)|add-?on|addon|categorization|detection|tagging|captioning/i.test(addonErrorMessage(err));
+}
+
+/**
+ * Free add-on quotas are small (e.g. 50 Google taggings/month, 500 captionings/month) and each is
+ * counted separately. When a call fails because of an add-on, drop only the add-on that failed and
+ * retry, so the asset still lands with whatever analysis is still available; as a last resort drop
+ * every add-on and keep EXIF, phash and colours.
+ */
+async function withAddonFallback(
+  label: string,
+  options: Record<string, unknown>,
+  call: (o: Record<string, unknown>) => Promise<UploadApiResponse>,
+): Promise<CloudinaryResource> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return (await call(options)) as unknown as CloudinaryResource;
+    } catch (err) {
+      const hasAddons = Boolean(options.categorization || options.detection);
+      if (!isAddonError(err) || !hasAddons) throw err;
+      const msg = addonErrorMessage(err);
+      const taggingFailed = /tagging|categorization/i.test(msg);
+      const captionFailed = /caption|detection/i.test(msg);
+      if (taggingFailed && !captionFailed && options.categorization) {
+        console.warn(`[cloudinary] tagging unavailable for ${label}; continuing without tags: ${msg}`);
+        delete options.categorization;
+        delete options.auto_tagging;
+      } else if (captionFailed && !taggingFailed && options.detection) {
+        console.warn(`[cloudinary] captioning unavailable for ${label}; continuing without caption: ${msg}`);
+        delete options.detection;
+      } else {
+        console.warn(`[cloudinary] add-ons unavailable for ${label}; continuing with metadata only: ${msg}`);
+        delete options.categorization;
+        delete options.auto_tagging;
+        delete options.detection;
+      }
+    }
+  }
+  return (await call(options)) as unknown as CloudinaryResource;
 }
 
 /** Fetches a resource with metadata without re-running add-ons. */
@@ -185,20 +208,7 @@ export async function uploadFile(
   if (env.cloudinary.captioning) {
     options.detection = "captioning";
   }
-  try {
-    const res = await cld.uploader.upload(file, options);
-    return res as unknown as CloudinaryResource;
-  } catch (err) {
-    if (isAddonError(err) && (options.categorization || options.detection)) {
-      console.warn(`[cloudinary] add-on unavailable while uploading ${file}; uploading without AI tags/caption: ${addonErrorMessage(err)}`);
-      delete options.categorization;
-      delete options.auto_tagging;
-      delete options.detection;
-      const res = await cld.uploader.upload(file, options);
-      return res as unknown as CloudinaryResource;
-    }
-    throw err;
-  }
+  return withAddonFallback(file, options, (o) => cld.uploader.upload(file, o));
 }
 
 // ---------- reading AI results out of a resource ----------

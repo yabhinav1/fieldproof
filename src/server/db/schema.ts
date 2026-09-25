@@ -212,7 +212,9 @@ export type AssetFlagCode =
   | "no_site_match"
   | "future_date"
   | "duplicate"
-  | "phase_order";
+  | "phase_order"
+  /** Capture date was assigned by the demo fixture script, not read from EXIF. */
+  | "demo_date";
 
 export interface AssetFlag {
   code: AssetFlagCode;

@@ -187,6 +187,23 @@ export async function ingestResource(db: Database, args: IngestResourceArgs): Pr
 
   let row: Asset;
   if (existing) {
+    // Re-analysis must not undo manual decisions: keep an overridden site/phase and a
+    // human-set verification unless this call explicitly overrides them again.
+    if (existing.siteOverridden && !args.siteOverride) {
+      values.siteId = existing.siteId;
+      values.siteOverridden = true;
+      values.distanceToSiteM = existing.distanceToSiteM;
+    }
+    if (existing.phaseOverridden && !args.phaseOverride) {
+      values.phase = existing.phase;
+      values.phaseOverridden = true;
+    }
+    if (existing.flags.some((f) => f.code === "demo_date") && !capturedAt) {
+      values.capturedAt = existing.capturedAt;
+    }
+    const keptFlags = existing.flags.filter((f) => f.code === "demo_date");
+    values.flags = [...values.flags.filter((f) => f.code !== "no_capture_date" || !keptFlags.length), ...keptFlags];
+    values.verified = isVerified(values.flags);
     [row] = await db.update(assets).set(values).where(eq(assets.id, existing.id)).returning();
   } else {
     [row] = await db.insert(assets).values(values).returning();

@@ -15,7 +15,9 @@
     "seed": "tsx scripts/seed.ts",
     "upload": "tsx scripts/upload-folder.ts",
     "cloudinary:setup": "tsx scripts/cloudinary-setup.ts",
-    "photos": "tsx scripts/fetch-commons-photos.ts"
+    "photos": "tsx scripts/fetch-commons-photos.ts",
+    "demo:dates": "tsx scripts/demo-assign-dates.ts",
+    "reanalyze": "tsx scripts/reanalyze.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

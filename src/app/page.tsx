@@ -1,3 +1,6 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -75,6 +78,8 @@ const recentPhotos = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+
   return (
     <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
       {/* Navigation */}
@@ -82,12 +87,15 @@ export default function Home() {
         <div className="mx-auto flex h-18 max-w-[1500px] items-center justify-between px-6 lg:px-10">
           <div className="flex items-center gap-10">
             {/* Logo */}
-            <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => router.push("/")}
+              className="flex items-center gap-2.5"
+            >
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#172019] text-white">
                 <Sparkles className="h-4 w-4" />
               </div>
 
-              <div>
+              <div className="text-left">
                 <p className="text-[15px] font-semibold tracking-[-0.02em]">
                   FieldProof
                 </p>
@@ -95,13 +103,14 @@ export default function Home() {
                   Impact evidence
                 </p>
               </div>
-            </div>
+            </button>
 
             {/* Navigation */}
             <nav className="hidden items-center gap-1 md:flex">
               <Button
                 variant="secondary"
                 className="rounded-lg bg-white px-4 text-sm shadow-sm"
+                onClick={() => router.push("/")}
               >
                 Overview
               </Button>
@@ -109,6 +118,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 className="rounded-lg px-4 text-sm text-muted-foreground"
+                onClick={() => router.push("/gallery")}
               >
                 Gallery
               </Button>
@@ -116,6 +126,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 className="rounded-lg px-4 text-sm text-muted-foreground"
+                onClick={() => router.push("/comparison")}
               >
                 Comparison
               </Button>
@@ -123,6 +134,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 className="rounded-lg px-4 text-sm text-muted-foreground"
+                onClick={() => router.push("/search")}
               >
                 Search
               </Button>
@@ -130,6 +142,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 className="rounded-lg px-4 text-sm text-muted-foreground"
+                disabled
               >
                 Map
               </Button>
@@ -137,6 +150,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 className="rounded-lg px-4 text-sm text-muted-foreground"
+                onClick={() => router.push("/report")}
               >
                 Report
               </Button>
@@ -147,6 +161,7 @@ export default function Home() {
           <Button
             variant="outline"
             className="hidden h-10 gap-2 rounded-xl border-black/[0.08] bg-white px-3 text-muted-foreground md:flex"
+            onClick={() => router.push("/search")}
           >
             <Search className="h-4 w-4" />
             <span className="text-sm">Search evidence</span>
@@ -193,7 +208,10 @@ export default function Home() {
               </div>
             </div>
 
-            <Button className="w-fit rounded-xl bg-[#172019] px-5 text-white hover:bg-[#26332a]">
+            <Button
+              className="w-fit rounded-xl bg-[#172019] px-5 text-white hover:bg-[#26332a]"
+              onClick={() => router.push("/gallery")}
+            >
               <ImageIcon className="mr-2 h-4 w-4" />
               View all evidence
             </Button>
@@ -207,6 +225,7 @@ export default function Home() {
             value="56"
             description="Photos collected"
             icon={<ImageIcon className="h-5 w-5" />}
+            onClick={() => router.push("/gallery")}
           />
 
           <StatCard
@@ -214,6 +233,7 @@ export default function Home() {
             value="3"
             description="Active restoration sites"
             icon={<MapPin className="h-5 w-5" />}
+            onClick={() => router.push("/gallery")}
           />
 
           <StatCard
@@ -221,6 +241,7 @@ export default function Home() {
             value="18"
             description="Before / after pairs"
             icon={<ArrowUpRight className="h-5 w-5" />}
+            onClick={() => router.push("/comparison")}
           />
 
           <StatCard
@@ -228,6 +249,7 @@ export default function Home() {
             value="51"
             description="Passed verification"
             icon={<ShieldCheck className="h-5 w-5" />}
+            onClick={() => router.push("/gallery")}
           />
         </section>
 
@@ -237,13 +259,15 @@ export default function Home() {
             title="Project sites"
             description="Evidence collected across the three restoration locations."
             action="View gallery"
+            onClick={() => router.push("/gallery")}
           />
 
           <div className="mt-5 grid gap-5 md:grid-cols-3">
             {sites.map((site) => (
               <Card
                 key={site.location}
-                className="group overflow-hidden rounded-2xl border-black/[0.07] bg-white py-0 shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/[0.05]"
+                onClick={() => router.push("/gallery")}
+                className="group cursor-pointer overflow-hidden rounded-2xl border-black/[0.07] bg-white py-0 shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/[0.05]"
               >
                 <div className="relative aspect-[16/10] overflow-hidden">
                   <img
@@ -300,11 +324,16 @@ export default function Home() {
               title="Recent field evidence"
               description="Latest media added to the project."
               action="Open gallery"
+              onClick={() => router.push("/gallery")}
             />
 
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
               {recentPhotos.map((photo) => (
-                <div key={photo.title} className="group cursor-pointer">
+                <div
+                  key={photo.title}
+                  onClick={() => router.push("/gallery")}
+                  className="group cursor-pointer"
+                >
                   <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-muted">
                     <img
                       src={photo.image}
@@ -367,7 +396,10 @@ export default function Home() {
               />
             </div>
 
-            <Button className="mt-8 w-full rounded-xl bg-white text-[#172019] hover:bg-white/90">
+            <Button
+              className="mt-8 w-full rounded-xl bg-white text-[#172019] hover:bg-white/90"
+              onClick={() => router.push("/gallery")}
+            >
               Explore evidence
               <ArrowUpRight className="ml-2 h-4 w-4" />
             </Button>
@@ -383,14 +415,19 @@ function StatCard({
   value,
   description,
   icon,
+  onClick,
 }: {
   label: string;
   value: string;
   description: string;
   icon: React.ReactNode;
+  onClick?: () => void;
 }) {
   return (
-    <Card className="rounded-2xl border-black/[0.07] bg-white p-5 shadow-none">
+    <Card
+      onClick={onClick}
+      className="cursor-pointer rounded-2xl border-black/[0.07] bg-white p-5 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+    >
       <div className="flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0f3ef] text-[#314238]">
           {icon}
@@ -414,20 +451,25 @@ function SectionHeading({
   title,
   description,
   action,
+  onClick,
 }: {
   title: string;
   description: string;
   action: string;
+  onClick?: () => void;
 }) {
   return (
     <div className="flex items-end justify-between gap-4">
       <div>
-        <h2 className="text-xl font-semibold tracking-[-0.025em]">{title}</h2>
+        <h2 className="text-xl font-semibold tracking-[-0.025em]">
+          {title}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
 
       <Button
         variant="ghost"
+        onClick={onClick}
         className="hidden gap-1.5 text-sm text-muted-foreground sm:flex"
       >
         {action}
@@ -454,7 +496,9 @@ function ActivityItem({
 
       <div>
         <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-white/50">{description}</p>
+        <p className="mt-1 text-xs leading-5 text-white/50">
+          {description}
+        </p>
       </div>
     </div>
   );

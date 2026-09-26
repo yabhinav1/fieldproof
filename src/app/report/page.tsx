@@ -106,9 +106,7 @@ export default function ReportPage() {
                 },
                 body: JSON.stringify({
                     projectId,
-                    title:
-                        title.trim() ||
-                        "Yamuna Riverbank Restoration Impact Report",
+                    title: title.trim() || undefined,
                     includeFlagged,
                 }),
             });
@@ -194,8 +192,7 @@ export default function ReportPage() {
                                 onChange={(event) =>
                                     setTitle(event.target.value)
                                 }
-                                placeholder="Yamuna Riverbank Restoration Impact Report"
-                                className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                placeholder="Enter report title (optional)" className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
                             />
                         </div>
                     </div>
@@ -275,16 +272,14 @@ export default function ReportPage() {
                                         </p>
                                     </div>
 
-                                    {report.htmlUrl && (
-                                        <a
-                                            href={report.htmlUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-medium hover:bg-muted"
-                                        >
-                                            Open report ↗
-                                        </a>
-                                    )}
+                                    <a
+                                        href={`/api/reports/${report.id}/html`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-medium hover:bg-muted"
+                                    >
+                                        Open report ↗
+                                    </a>
                                 </div>
                             ))}
                         </div>

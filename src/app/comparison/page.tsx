@@ -9,6 +9,11 @@ type Asset = {
     capturedAt: string | null;
 };
 
+type Project = {
+    id: string;
+    name: string;
+};
+
 type Comparison = {
     id: string;
     siteId: string | null;
@@ -31,19 +36,60 @@ type Comparison = {
 
 
 export default function ComparisonPage() {
-    const [slider, setSlider] = useState(50);
-    const [comparisonData, setComparisonData] = useState<Comparison | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [selectedProject, setSelectedProject] = useState("");
+
+    const [comparisonData, setComparisonData] =
+        useState<Comparison | null>(null);
+
+    const [loadingProjects, setLoadingProjects] = useState(true);
+    const [loadingComparison, setLoadingComparison] = useState(false);
     const [error, setError] = useState("");
 
+    // Load projects
     useEffect(() => {
+        async function loadProjects() {
+            try {
+                setLoadingProjects(true);
+                setError("");
+
+                const response = await fetch("/api/projects");
+
+                if (!response.ok) {
+                    throw new Error("Failed to load projects");
+                }
+
+                const result = await response.json();
+
+                setProjects(result.data ?? []);
+            } catch (err) {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to load projects"
+                );
+            } finally {
+                setLoadingProjects(false);
+            }
+        }
+
+        loadProjects();
+    }, []);
+
+    // Load comparisons only after a project is selected
+    useEffect(() => {
+        if (!selectedProject) {
+            setComparisonData(null);
+            return;
+        }
+
         async function loadComparison() {
             try {
-                setLoading(true);
+                setLoadingComparison(true);
                 setError("");
 
                 const response = await fetch(
-                    "/api/comparisons?projectId=acc78062-0358-43a1-a6e2-44f7af1793b4"
+                    `/api/comparisons?projectId=${selectedProject}`
                 );
 
                 if (!response.ok) {
@@ -57,21 +103,23 @@ export default function ComparisonPage() {
                 if (comparisons.length > 0) {
                     setComparisonData(comparisons[0]);
                 } else {
-                    setError("No saved comparisons found.");
+                    setComparisonData(null);
+                    setError("No saved comparisons found for this project.");
                 }
             } catch (err) {
+                setComparisonData(null);
                 setError(
                     err instanceof Error
                         ? err.message
                         : "Failed to load comparison"
                 );
             } finally {
-                setLoading(false);
+                setLoadingComparison(false);
             }
         }
 
         loadComparison();
-    }, []);
+    }, [selectedProject]);
 
     const getMetric = (name: string) =>
         comparisonData?.metrics.find((metric) => metric.name === name)?.direction ??
@@ -98,14 +146,31 @@ export default function ComparisonPage() {
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-3 text-sm">
-                            <span className="rounded-full border px-3 py-1.5">
-                                {"Green Yamuna Collective"}
-                            </span>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <select
+                                value={selectedProject}
+                                onChange={(event) => setSelectedProject(event.target.value)}
+                                disabled={loadingProjects}
+                                className="h-10 rounded-full border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                            >
+                                <option value="">
+                                    {loadingProjects
+                                        ? "Loading projects..."
+                                        : "Select a project"}
+                                </option>
 
-                            <span className="rounded-full border bg-muted/40 px-3 py-1.5">
-                                {"Site A · Kudsia Ghat cleanup"}
-                            </span>
+                                {projects.map((project) => (
+                                    <option key={project.id} value={project.id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </select>
+
+                            {comparisonData?.siteId && (
+                                <span className="rounded-full border bg-muted/40 px-3 py-1.5 text-sm">
+                                    Comparison site
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -113,6 +178,18 @@ export default function ComparisonPage() {
 
             {/* Comparison */}
             <section className="mx-auto max-w-7xl px-6 py-10">
+                {!selectedProject && !loadingProjects && (
+                    <div className="rounded-2xl border border-dashed p-12 text-center">
+                        <h3 className="text-lg font-semibold">
+                            Select a project to view comparisons
+                        </h3>
+
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            Choose a project above to load its saved before-and-after
+                            evidence.
+                        </p>
+                    </div>
+                )}
                 {comparisonData && (
                     <ComparisonSlider
                         before={{
@@ -124,6 +201,17 @@ export default function ComparisonPage() {
                             date: "",
                         }}
                     />
+                )}
+                {selectedProject && !loadingComparison && !comparisonData && (
+                    <div className="rounded-2xl border border-dashed p-12 text-center">
+                        <h3 className="text-lg font-semibold">
+                            No comparison available
+                        </h3>
+
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            This project does not have a saved before-and-after comparison yet.
+                        </p>
+                    </div>
                 )}
                 {/* AI Assessment */}
                 <section className="mt-8">
@@ -152,11 +240,16 @@ export default function ComparisonPage() {
                                 </div>
 
                                 <h3 className="mt-5 text-2xl font-semibold tracking-tight">
-                                    {comparisonData?.headline ?? "Loading comparison..."}
+                                    {loadingComparison
+                                        ? "Loading comparison..."
+                                        : comparisonData?.headline ?? "Select a project to begin"}
                                 </h3>
 
                                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                                    {comparisonData?.summary ?? "Loading comparison..."}
+                                    {loadingComparison
+                                        ? "Loading comparison..."
+                                        : comparisonData?.summary ??
+                                        "Select a project above to view the AI assessment."}
                                 </p>
                             </div>
 

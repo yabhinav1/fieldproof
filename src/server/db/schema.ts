@@ -235,6 +235,18 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   reports: many(reports),
 }));
 
+export const sitesRelations = relations(sites, ({ one, many }) => ({
+  project: one(projects, { fields: [sites.projectId], references: [projects.id] }),
+  assets: many(assets),
+  locations: many(locations),
+}));
+
+export const locationsRelations = relations(locations, ({ one, many }) => ({
+  project: one(projects, { fields: [locations.projectId], references: [projects.id] }),
+  site: one(sites, { fields: [locations.siteId], references: [sites.id] }),
+  assets: many(assets),
+}));
+
 export const assetsRelations = relations(assets, ({ one, many }) => ({
   project: one(projects, {
     fields: [assets.projectId],
@@ -320,3 +332,4 @@ export type NewAsset = typeof assets.$inferInsert;
 
 export type Comparison = typeof comparisons.$inferSelect;
 export type Report = typeof reports.$inferSelect;
+export type Provenance = typeof provenance.$inferSelect;

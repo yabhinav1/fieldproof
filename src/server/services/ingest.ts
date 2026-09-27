@@ -29,6 +29,7 @@ import { isVerified, verifyAsset } from "../lib/verify";
 import { embedTexts, embeddingModelName } from "../ai/embeddings";
 import { describeImage } from "../ai/describe";
 import { getProject } from "./projects";
+import { defaultLocationForSite } from "./locations";
 import { badRequest } from "../http";
 
 export const IngestSchema = z.object({
@@ -334,14 +335,15 @@ export async function ingestResource(
   // Asset values
   // ------------------------------------------------------------
 
+  // Named location: the one chosen at upload, else the site's default location if it has one.
+  const locationId = args.locationOverride ?? (siteId ? await defaultLocationForSite(db, siteId) : null);
+
   const values = {
     projectId: project.id,
 
     siteId,
 
-    // NEW:
-    // Named reusable location selected during upload.
-    locationId: args.locationOverride ?? null,
+    locationId,
 
     cloudinaryPublicId: resource.public_id,
 

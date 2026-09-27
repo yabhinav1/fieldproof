@@ -132,11 +132,13 @@ export async function getProjectOverview(db: Database, id: string) {
     totals.total += b.total;
   }
 
+  const flaggedCount = Number(flagged[0]?.n ?? 0);
   return {
     ...project,
     sites: siteRows.map((s) => ({ ...s, assetCounts: bySite.get(s.id) ?? emptyPhases() })),
     unassignedAssets: bySite.get(null) ?? emptyPhases(),
-    totals: { ...totals, flagged: Number(flagged[0]?.n ?? 0) },
+    // `assets` and `verified` duplicate `total` / `total - flagged` under the names the dashboard uses.
+    totals: { ...totals, flagged: flaggedCount, assets: totals.total, verified: totals.total - flaggedCount },
   };
 }
 

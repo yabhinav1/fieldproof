@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/server/db";
 import { projects } from "../src/server/db/schema";
 import { createProject, createSite } from "../src/server/services/projects";
+import { ensureSiteLocations } from "../src/server/services/locations";
 
 const PROJECT = {
   name: "Yamuna Riverbank Restoration",
@@ -63,6 +64,9 @@ async function main() {
     const site = await createSite(db, project.id, s);
     console.log(`  Site ${site.name} (${site.id})`);
   }
+  // One default named location per site so the comparison and gallery views have something to select.
+  const locations = await ensureSiteLocations(db, project.id);
+  console.log(`  ${locations.size} default location(s) created`);
   await close();
   console.log("Done.");
 }

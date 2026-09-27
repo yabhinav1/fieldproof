@@ -76,7 +76,7 @@ All responses are `{ ok: true, data }` or `{ ok: false, error, details? }`. IDs 
 |---|---|---|---|
 | GET | `/api/projects` | | projects with `siteCount`, `assetCount` |
 | POST | `/api/projects` | `{ name, slug?, description?, orgName?, duringStart?, afterStart? }` | project |
-| GET | `/api/projects/:id` | | project + `sites[]` (each with `assetCounts`) + `totals` + `unassignedAssets` |
+| GET | `/api/projects/:id` | | project + `sites[]` (each with `assetCounts`) + `totals { before, during, after, unknown, total, flagged, assets, verified }` + `unassignedAssets` |
 | PATCH | `/api/projects/:id` | any of the create fields | project |
 | DELETE | `/api/projects/:id` | | `{ deleted }` |
 | GET | `/api/projects/:id/sites` | | sites |
@@ -84,6 +84,14 @@ All responses are `{ ok: true, data }` or `{ ok: false, error, details? }`. IDs 
 | GET | `/api/projects/:id/timeline` | | `[{ siteId, before[], during[], after[], unknown[] }]` oldest first |
 
 `duringStart` / `afterStart` define phases: captured before `duringStart` = **before**, between = **during**, after `afterStart` = **after**.
+
+### Field locations
+| Method | Path | Body / query | Returns |
+|---|---|---|---|
+| GET | `/api/locations?projectId=&siteId=&q=` | | named locations (each site gets a default one named after it) |
+| POST | `/api/locations` | `{ projectId, siteId?, name, lat?, lng? }` | location |
+
+A location is a reusable label inside a site for repeat photography of one spot. Ingest accepts `locationId`; without it an asset gets its site's default location. `npm run backfill:locations -- --project <slug>` creates defaults and attaches existing assets.
 
 ### Upload and ingest
 1. `POST /api/uploads/sign` with `{ projectId, siteId? }` → `{ cloudName, apiKey, timestamp, signature, folder, params, uploadUrl }`.

@@ -12,10 +12,20 @@ type Site = {
     name: string;
 };
 
+type Location = {
+    id: string;
+    projectId: string;
+    siteId: string | null;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+};
+
 type Asset = {
     id: string;
     secureUrl: string;
     siteId: string | null;
+    locationId: string | null;
     phase: "before" | "during" | "after" | "unknown";
     capturedAt: string | null;
     aiTags: string[];
@@ -45,9 +55,11 @@ const phaseOptions = [
 export default function SearchPage() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [sites, setSites] = useState<Site[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
 
     const [projectId, setProjectId] = useState("");
     const [siteId, setSiteId] = useState("");
+    const [locationId, setLocationId] = useState("");
     const [phase, setPhase] = useState("");
     const [verifiedOnly, setVerifiedOnly] = useState(false);
     const [query, setQuery] = useState("");
@@ -94,26 +106,53 @@ export default function SearchPage() {
     useEffect(() => {
         if (!projectId) {
             setSites([]);
+            setLocations([]);
             return;
         }
 
-        async function loadSites() {
+        async function loadProjectFilters() {
             try {
-                const response = await fetch(`/api/projects/${projectId}`);
+                setError("");
 
-                if (!response.ok) {
+                const [projectResponse, locationsResponse] =
+                    await Promise.all([
+                        fetch(`/api/projects/${projectId}`),
+                        fetch(
+                            `/api/locations?projectId=${encodeURIComponent(
+                                projectId
+                            )}`
+                        ),
+                    ]);
+
+                if (!projectResponse.ok) {
                     throw new Error("Failed to load sites");
                 }
 
-                const result = await response.json();
-                setSites(result.data?.sites ?? []);
-            } catch {
+                if (!locationsResponse.ok) {
+                    throw new Error("Failed to load field locations");
+                }
+
+                const projectResult = await projectResponse.json();
+                const locationsResult = await locationsResponse.json();
+
+                setSites(projectResult.data?.sites ?? []);
+                setLocations(locationsResult.data ?? []);
+            } catch (err) {
                 setSites([]);
+                setLocations([]);
+
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to load project filters"
+                );
             }
         }
 
-        loadSites();
+        loadProjectFilters();
+
         setSiteId("");
+        setLocationId("");
     }, [projectId]);
 
     async function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -145,7 +184,9 @@ export default function SearchPage() {
                 params.set("verifiedOnly", "true");
             }
 
-            const response = await fetch(`/api/search?${params.toString()}`);
+            const response = await fetch(
+                `/api/search?${params.toString()}`
+            );
 
             if (!response.ok) {
                 throw new Error("Search failed");
@@ -154,13 +195,41 @@ export default function SearchPage() {
             const result = await response.json();
             const data: SearchResponse = result.data;
 
-            setResults(data?.hits ?? []);
+            const hits = data?.hits ?? [];
+
+            const filteredHits = locationId
+                ? hits.filter((hit) => {
+                      if (
+                          hit.asset.locationId === locationId
+                      ) {
+                          return true;
+                      }
+
+                      // Legacy demo assets may not have locationId.
+                      // Fall back to the location's site.
+                      const selectedLocation = locations.find(
+                          (location) =>
+                              location.id === locationId
+                      );
+
+                      return Boolean(
+                          selectedLocation?.siteId &&
+                              hit.asset.siteId ===
+                                  selectedLocation.siteId
+                      );
+                  })
+                : hits;
+
+            setResults(filteredHits);
             setMode(data?.mode ?? "");
         } catch (err) {
             setResults([]);
             setMode("");
+
             setError(
-                err instanceof Error ? err.message : "Search failed"
+                err instanceof Error
+                    ? err.message
+                    : "Search failed"
             );
         } finally {
             setLoading(false);
@@ -180,8 +249,9 @@ export default function SearchPage() {
                     </h1>
 
                     <p className="mt-4 text-lg leading-8 text-muted-foreground">
-                        Search across field photos using natural language,
-                        AI captions, tags, and semantic similarity.
+                        Search across field photos using natural
+                        language, AI captions, tags, and semantic
+                        similarity.
                     </p>
                 </div>
 
@@ -207,14 +277,20 @@ export default function SearchPage() {
 
                         <button
                             type="submit"
-                            disabled={loading || !query.trim() || !projectId}
+                            disabled={
+                                loading ||
+                                !query.trim() ||
+                                !projectId
+                            }
                             className="mt-auto h-12 rounded-xl bg-foreground px-7 text-sm font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {loading ? "Searching..." : "Search evidence"}
+                            {loading
+                                ? "Searching..."
+                                : "Search evidence"}
                         </button>
                     </div>
 
-                    <div className="mt-5 grid gap-3 md:grid-cols-3">
+                    <div className="mt-5 grid gap-3 md:grid-cols-4">
                         <select
                             value={projectId}
                             onChange={(event) =>
@@ -224,7 +300,10 @@ export default function SearchPage() {
                             className="h-11 rounded-xl border bg-background px-3 text-sm"
                         >
                             {projects.map((project) => (
-                                <option key={project.id} value={project.id}>
+                                <option
+                                    key={project.id}
+                                    value={project.id}
+                                >
                                     {project.name}
                                 </option>
                             ))}
@@ -237,11 +316,37 @@ export default function SearchPage() {
                             }
                             className="h-11 rounded-xl border bg-background px-3 text-sm"
                         >
-                            <option value="">All sites</option>
+                            <option value="">
+                                All sites
+                            </option>
 
                             {sites.map((site) => (
-                                <option key={site.id} value={site.id}>
+                                <option
+                                    key={site.id}
+                                    value={site.id}
+                                >
                                     {site.name}
+                                </option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={locationId}
+                            onChange={(event) =>
+                                setLocationId(event.target.value)
+                            }
+                            className="h-11 rounded-xl border bg-background px-3 text-sm"
+                        >
+                            <option value="">
+                                All field locations
+                            </option>
+
+                            {locations.map((location) => (
+                                <option
+                                    key={location.id}
+                                    value={location.id}
+                                >
+                                    {location.name}
                                 </option>
                             ))}
                         </select>
@@ -269,10 +374,13 @@ export default function SearchPage() {
                             type="checkbox"
                             checked={verifiedOnly}
                             onChange={(event) =>
-                                setVerifiedOnly(event.target.checked)
+                                setVerifiedOnly(
+                                    event.target.checked
+                                )
                             }
                             className="h-4 w-4"
                         />
+
                         Show verified evidence only
                     </label>
                 </form>
@@ -311,9 +419,9 @@ export default function SearchPage() {
                             </p>
 
                             <p className="mt-2 text-sm text-muted-foreground">
-                                Try phrases such as “riverbank cleanup”,
-                                “plantation activity”, or “waste near the
-                                river”.
+                                Try phrases such as “riverbank
+                                cleanup”, “plantation activity”,
+                                or “waste near the river”.
                             </p>
                         </div>
                     ) : (
@@ -377,7 +485,9 @@ export default function SearchPage() {
                                             </span>
 
                                             <span className="text-xs text-muted-foreground">
-                                                {hit.matchedBy.join(" + ")}
+                                                {hit.matchedBy.join(
+                                                    " + "
+                                                )}
                                             </span>
                                         </div>
                                     </div>

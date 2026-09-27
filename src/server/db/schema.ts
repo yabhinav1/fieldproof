@@ -60,14 +60,56 @@ export const sites = pgTable(
   (t) => [index("sites_project_idx").on(t.projectId)],
 );
 
+export const locations = pgTable(
+  "locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+
+    siteId: uuid("site_id").references(() => sites.id, {
+      onDelete: "set null",
+    }),
+
+    name: text("name").notNull(),
+
+    // Representative coordinates for the named location.
+    // Individual assets keep their own exact lat/lng.
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("locations_project_idx").on(t.projectId),
+    index("locations_site_idx").on(t.siteId),
+  ],
+);
+
 export const assets = pgTable(
   "assets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+
+    siteId: uuid("site_id").references(() => sites.id, {
+      onDelete: "set null",
+    }),
+
+    locationId: uuid("location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
 
     // Cloudinary identity: the traceability anchor for everything derived later.
     cloudinaryPublicId: text("cloudinary_public_id").notNull().unique(),
@@ -112,6 +154,7 @@ export const assets = pgTable(
   (t) => [
     index("assets_project_idx").on(t.projectId),
     index("assets_site_idx").on(t.siteId),
+    index("assets_location_idx").on(t.locationId),
     index("assets_captured_idx").on(t.capturedAt),
     index("assets_embedding_idx").using("hnsw", t.embedding.op("vector_cosine_ops")),
   ],
@@ -192,14 +235,22 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   reports: many(reports),
 }));
 
-export const sitesRelations = relations(sites, ({ one, many }) => ({
-  project: one(projects, { fields: [sites.projectId], references: [projects.id] }),
-  assets: many(assets),
-}));
-
 export const assetsRelations = relations(assets, ({ one, many }) => ({
-  project: one(projects, { fields: [assets.projectId], references: [projects.id] }),
-  site: one(sites, { fields: [assets.siteId], references: [sites.id] }),
+  project: one(projects, {
+    fields: [assets.projectId],
+    references: [projects.id],
+  }),
+
+  site: one(sites, {
+    fields: [assets.siteId],
+    references: [sites.id],
+  }),
+
+  location: one(locations, {
+    fields: [assets.locationId],
+    references: [locations.id],
+  }),
+
   provenance: many(provenance),
 }));
 
@@ -257,10 +308,15 @@ export interface ReportContent {
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+
 export type Site = typeof sites.$inferSelect;
 export type NewSite = typeof sites.$inferInsert;
+
+export type Location = typeof locations.$inferSelect;
+export type NewLocation = typeof locations.$inferInsert;
+
 export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
+
 export type Comparison = typeof comparisons.$inferSelect;
 export type Report = typeof reports.$inferSelect;
-export type Provenance = typeof provenance.$inferSelect;

@@ -15,6 +15,13 @@
       "when": 1790356792150,
       "tag": "0001_comparison_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790468592922,
+      "tag": "0002_lush_mystique",
+      "breakpoints": true
     }
   ]
 }

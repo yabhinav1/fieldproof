@@ -1,443 +1,521 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
-  CalendarDays,
-  ChevronRight,
+  FolderOpen,
   Image as ImageIcon,
-  MapPin,
   Search,
   ShieldCheck,
   Sparkles,
-  Trees,
   Waves,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 
-const sites = [
-  {
-    name: "Ghat Cleanup",
-    location: "Site A",
-    photos: 18,
-    phase: "After",
-    image:
-      "https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    name: "Tree Plantation",
-    location: "Site B",
-    photos: 20,
-    phase: "During",
-    image:
-      "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    name: "Waste Segregation",
-    location: "Site C",
-    photos: 18,
-    phase: "After",
-    image:
-      "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=900&q=80",
-  },
-];
+type Project = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
 
-const recentPhotos = [
-  {
-    title: "Riverbank cleanup",
-    site: "Site A",
-    date: "20 Aug 2026",
-    image:
-      "https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=800&q=80",
-  },
-  {
-    title: "New plantation area",
-    site: "Site B",
-    date: "14 Aug 2026",
-    image:
-      "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=800&q=80",
-  },
-  {
-    title: "Waste collection",
-    site: "Site C",
-    date: "08 Aug 2026",
-    image:
-      "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=800&q=80",
-  },
-  {
-    title: "Riverbank volunteers",
-    site: "Site A",
-    date: "02 Aug 2026",
-    image:
-      "https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=800&q=80",
-  },
-];
+type ProjectOverview = Project & {
+  sites?: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    assetCounts?: {
+      total?: number;
+      before?: number;
+      during?: number;
+      after?: number;
+      unknown?: number;
+    };
+  }>;
+  totals?: {
+    assets?: number;
+    verified?: number;
+    comparisons?: number;
+  };
+};
+
+type ProjectCardData = {
+  project: Project;
+  overview?: ProjectOverview;
+  previewImage?: string;
+};
 
 export default function Home() {
+  const router = useRouter();
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectData, setProjectData] = useState<
+    Record<string, ProjectCardData>
+  >({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        setLoading(true);
+
+        const response = await fetch("/api/projects", {
+          cache: "no-store",
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          throw new Error(
+            result.error || "Failed to load projects."
+          );
+        }
+
+        const projectList: Project[] = result.data ?? [];
+
+        setProjects(projectList);
+
+        const details = await Promise.all(
+          projectList.map(async (project) => {
+            let overview: ProjectOverview | undefined;
+            let previewImage: string | undefined;
+
+            try {
+              const overviewResponse = await fetch(
+                `/api/projects/${project.id}`,
+                {
+                  cache: "no-store",
+                }
+              );
+
+              const overviewResult =
+                await overviewResponse.json();
+
+              if (
+                overviewResponse.ok &&
+                overviewResult.ok
+              ) {
+                overview = overviewResult.data;
+              }
+            } catch {
+              // Project remains visible if overview fails.
+            }
+
+            try {
+              const assetsResponse = await fetch(
+                `/api/assets?projectId=${project.id}&limit=20`,
+                {
+                  cache: "no-store",
+                }
+              );
+
+              const assetsResult =
+                await assetsResponse.json();
+
+              if (
+                assetsResponse.ok &&
+                assetsResult.ok &&
+                Array.isArray(assetsResult.data)
+              ) {
+                const firstImage = assetsResult.data.find(
+                  (asset: { secureUrl?: string }) =>
+                    Boolean(asset.secureUrl)
+                );
+
+                previewImage = firstImage?.secureUrl;
+              }
+            } catch {
+              // Card simply uses the fallback if no image is available.
+            }
+
+            return {
+              project,
+              overview,
+              previewImage,
+            };
+          })
+        );
+
+        const mapped: Record<string, ProjectCardData> = {};
+
+        for (const detail of details) {
+          mapped[detail.project.id] = detail;
+        }
+
+        setProjectData(mapped);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProjects();
+  }, []);
+
+  function openProject(projectId: string) {
+    router.push(`/project/${projectId}`);
+  }
+
   return (
     <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
-      {/* Navigation */}
-      <header className="sticky top-0 z-50 border-b border-black/[0.06] bg-[#f7f8f6]/95 backdrop-blur">
-        <div className="mx-auto flex h-18 max-w-[1500px] items-center justify-between px-6 lg:px-10">
-          <div className="flex items-center gap-10">
-            {/* Logo */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#172019] text-white">
-                <Sparkles className="h-4 w-4" />
-              </div>
-
-              <div>
-                <p className="text-[15px] font-semibold tracking-[-0.02em]">
-                  FieldProof
-                </p>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                  Impact evidence
-                </p>
-              </div>
+      {/* Header */}
+      <header className="border-b border-black/[0.07] bg-[#f7f8f6]">
+        <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-6 lg:px-10">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="flex items-center gap-3"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#172019] text-white">
+              <Sparkles className="h-4 w-4" />
             </div>
 
-            {/* Navigation */}
-            <nav className="hidden items-center gap-1 md:flex">
-              <Button
-                variant="secondary"
-                className="rounded-lg bg-white px-4 text-sm shadow-sm"
-              >
-                Overview
-              </Button>
+            <div className="text-left">
+              <p className="text-[15px] font-semibold tracking-[-0.02em]">
+                FieldProof
+              </p>
 
-              <Button
-                variant="ghost"
-                className="rounded-lg px-4 text-sm text-muted-foreground"
-              >
-                Gallery
-              </Button>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                Field evidence
+              </p>
+            </div>
+          </button>
 
-              <Button
-                variant="ghost"
-                className="rounded-lg px-4 text-sm text-muted-foreground"
-              >
-                Comparison
-              </Button>
-
-              <Button
-                variant="ghost"
-                className="rounded-lg px-4 text-sm text-muted-foreground"
-              >
-                Search
-              </Button>
-
-              <Button
-                variant="ghost"
-                className="rounded-lg px-4 text-sm text-muted-foreground"
-              >
-                Map
-              </Button>
-
-              <Button
-                variant="ghost"
-                className="rounded-lg px-4 text-sm text-muted-foreground"
-              >
-                Report
-              </Button>
-            </nav>
-          </div>
-
-          {/* Search */}
-          <Button
-            variant="outline"
-            className="hidden h-10 gap-2 rounded-xl border-black/[0.08] bg-white px-3 text-muted-foreground md:flex"
-          >
-            <Search className="h-4 w-4" />
-            <span className="text-sm">Search evidence</span>
-            <kbd className="ml-4 rounded-md bg-[#f2f3f1] px-1.5 py-0.5 text-[10px]">
-              /
-            </kbd>
-          </Button>
+          <span className="text-sm text-muted-foreground">
+            Projects
+          </span>
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="mx-auto max-w-[1500px] px-6 py-8 lg:px-10 lg:py-10">
-        {/* Project heading */}
-        <section className="mb-10">
-          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-            <div>
-              <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Projects</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-                <span>Riverbank Restoration</span>
-              </div>
+      {/* Hero */}
+      <section className="mx-auto max-w-[1440px] px-6 pb-14 pt-16 lg:px-10 lg:pb-16 lg:pt-20">
+        <div className="grid gap-8 lg:grid-cols-[1fr_420px] lg:items-end">
+          <div>
+            <p className="mb-5 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Field documentation
+            </p>
 
-              <h1 className="text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-                Green Yamuna Collective
-              </h1>
-
-              <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4" />
-                  Delhi, India
-                </span>
-
-                <span className="flex items-center gap-1.5">
-                  <CalendarDays className="h-4 w-4" />
-                  6 month project
-                </span>
-
-                <Badge
-                  variant="outline"
-                  className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
-                >
-                  Active project
-                </Badge>
-              </div>
-            </div>
-
-            <Button className="w-fit rounded-xl bg-[#172019] px-5 text-white hover:bg-[#26332a]">
-              <ImageIcon className="mr-2 h-4 w-4" />
-              View all evidence
-            </Button>
+            <h1 className="max-w-4xl text-5xl font-semibold leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:text-[68px]">
+              Projects and evidence,
+              <br />
+              <span className="text-[#68746d]">
+                in one place.
+              </span>
+            </h1>
           </div>
-        </section>
 
-        {/* Statistics */}
-        <section className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Field assets"
-            value="56"
-            description="Photos collected"
-            icon={<ImageIcon className="h-5 w-5" />}
-          />
+          <div className="max-w-md lg:justify-self-end">
+            <p className="text-base leading-7 text-muted-foreground">
+              Review field photographs, track locations, verify
+              evidence, compare changes and prepare reports for
+              each project.
+            </p>
 
-          <StatCard
-            label="Project sites"
-            value="3"
-            description="Active restoration sites"
-            icon={<MapPin className="h-5 w-5" />}
-          />
+            <div className="mt-5 flex items-center gap-2 text-sm text-[#314238]">
+              <FolderOpen className="h-4 w-4" />
 
-          <StatCard
-            label="Comparisons"
-            value="18"
-            description="Before / after pairs"
-            icon={<ArrowUpRight className="h-5 w-5" />}
-          />
+              <span>
+                {loading
+                  ? "Loading projects..."
+                  : `${projects.length} ${projects.length === 1
+                    ? "project"
+                    : "projects"
+                  }`}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <StatCard
-            label="Verified assets"
-            value="51"
-            description="Passed verification"
-            icon={<ShieldCheck className="h-5 w-5" />}
-          />
-        </section>
+      {/* Projects */}
+      <section className="mx-auto max-w-[1440px] px-6 pb-20 lg:px-10">
+        <div className="mb-7 flex items-end justify-between border-b border-black/[0.08] pb-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+              Your projects
+            </p>
 
-        {/* Sites */}
-        <section className="mb-12">
-          <SectionHeading
-            title="Project sites"
-            description="Evidence collected across the three restoration locations."
-            action="View gallery"
-          />
+            <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em]">
+              Select a project
+            </h2>
+          </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-3">
-            {sites.map((site) => (
-              <Card
-                key={site.location}
-                className="group overflow-hidden rounded-2xl border-black/[0.07] bg-white py-0 shadow-none transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/[0.05]"
-              >
-                <div className="relative aspect-[16/10] overflow-hidden">
-                  <img
-                    src={site.image}
-                    alt={site.name}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
+          <span className="hidden text-xs text-muted-foreground sm:block">
+            Choose a project to continue
+          </span>
+        </div>
 
-                  <div className="absolute left-4 top-4">
-                    <Badge className="rounded-full bg-white/90 text-[#172019] shadow-sm backdrop-blur hover:bg-white">
-                      {site.location}
-                    </Badge>
-                  </div>
-
-                  <div className="absolute bottom-4 right-4">
-                    <Badge className="rounded-full bg-[#172019]/90 text-white backdrop-blur hover:bg-[#172019]">
-                      {site.phase}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="font-semibold tracking-[-0.02em]">
-                        {site.name}
-                      </h3>
-
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Riverbank restoration site
-                      </p>
-                    </div>
-
-                    <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                  </div>
-
-                  <Separator className="my-4" />
-
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Evidence</span>
-                    <span className="font-medium">{site.photos} photos</span>
-                  </div>
-                </div>
-              </Card>
+        {loading ? (
+          <div className="grid gap-6 md:grid-cols-2">
+            {[1, 2].map((item) => (
+              <ProjectCardSkeleton key={item} />
             ))}
           </div>
-        </section>
+        ) : projects.length === 0 ? (
+          <Card className="rounded-xl border-dashed bg-white p-12 text-center shadow-none">
+            <FolderOpen className="mx-auto h-7 w-7 text-muted-foreground" />
 
-        {/* Bottom section */}
-        <section className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-          {/* Recent evidence */}
-          <Card className="rounded-2xl border-black/[0.07] bg-white p-6 shadow-none">
-            <SectionHeading
-              title="Recent field evidence"
-              description="Latest media added to the project."
-              action="Open gallery"
-            />
+            <h3 className="mt-4 text-lg font-semibold">
+              No projects yet
+            </h3>
 
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {recentPhotos.map((photo) => (
-                <div key={photo.title} className="group cursor-pointer">
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-muted">
-                    <img
-                      src={photo.image}
-                      alt={photo.title}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 pt-12">
-                      <p className="text-xs font-medium text-white">
-                        {photo.site}
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="mt-2 truncate text-sm font-medium">
-                    {photo.title}
-                  </p>
-
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {photo.date}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              Projects will appear here once they have been
+              created.
+            </p>
           </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2">
+            {projects.map((project) => {
+              const data = projectData[project.id];
 
-          {/* Project activity */}
-          <Card className="rounded-2xl border-black/[0.07] bg-[#172019] p-6 text-white shadow-none">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/50">
-                  Project activity
-                </p>
+              return (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  overview={data?.overview}
+                  previewImage={data?.previewImage}
+                  onOpen={() => openProject(project.id)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
 
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
-                  Evidence at a glance
-                </h2>
-              </div>
+      {/* What FieldProof covers */}
+      <section className="border-y border-black/[0.07] bg-white">
+        <div className="mx-auto max-w-[1440px] px-6 py-16 lg:px-10">
+          <div className="grid gap-12 lg:grid-cols-[0.75fr_1.25fr]">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                FieldProof
+              </p>
 
-              <Trees className="h-6 w-6 text-white/60" />
+              <h2 className="mt-3 max-w-md text-3xl font-semibold leading-tight tracking-[-0.04em]">
+                Keep the field record together from collection to report.
+              </h2>
             </div>
 
-            <div className="mt-8 space-y-6">
-              <ActivityItem
+            <div className="grid border-y border-black/[0.08] sm:grid-cols-2">
+              <FeatureItem
+                icon={<ImageIcon className="h-4 w-4" />}
+                title="Field evidence"
+                description="Keep photographs organized by project, site and phase."
+              />
+
+              <FeatureItem
                 icon={<Waves className="h-4 w-4" />}
-                title="Ghat cleanup"
-                description="18 assets across before, during and after phases"
+                title="Change over time"
+                description="Compare before and after evidence from field locations."
               />
 
-              <ActivityItem
-                icon={<Trees className="h-4 w-4" />}
-                title="Tree plantation"
-                description="20 field photos collected from Site B"
+              <FeatureItem
+                icon={<Search className="h-4 w-4" />}
+                title="Evidence search"
+                description="Find relevant photographs using natural language."
               />
 
-              <ActivityItem
+              <FeatureItem
                 icon={<ShieldCheck className="h-4 w-4" />}
-                title="Verification"
-                description="51 of 56 assets currently pass checks"
+                title="Verification and reports"
+                description="Trace evidence and turn project findings into reports."
               />
             </div>
+          </div>
+        </div>
+      </section>
 
-            <Button className="mt-8 w-full rounded-xl bg-white text-[#172019] hover:bg-white/90">
-              Explore evidence
-              <ArrowUpRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Card>
-        </section>
-      </div>
+      {/* Footer */}
+      <footer className="bg-[#f7f8f6]">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between lg:px-10">
+          <span>FieldProof</span>
+          <span>
+            Field evidence · Verification · Impact reporting
+          </span>
+        </div>
+      </footer>
     </main>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  description,
-  icon,
+function ProjectCard({
+  project,
+  overview,
+  previewImage,
+  onOpen,
 }: {
-  label: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
+  project: Project;
+  overview?: ProjectOverview;
+  previewImage?: string;
+  onOpen: () => void;
 }) {
-  return (
-    <Card className="rounded-2xl border-black/[0.07] bg-white p-5 shadow-none">
-      <div className="flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0f3ef] text-[#314238]">
-          {icon}
-        </div>
+  const assets = overview?.totals?.assets ?? 0;
+  const verified = overview?.totals?.verified ?? 0;
+  const sites = overview?.sites?.length ?? 0;
 
-        <span className="text-xs text-muted-foreground">Project</span>
+  return (
+    <Card className="group overflow-hidden rounded-xl border-black/[0.09] bg-white p-0 shadow-none transition-colors duration-200 hover:border-black/[0.18]">
+      {/* Image */}
+      <div className="relative aspect-[16/8.5] overflow-hidden bg-[#e9ece8]">
+        {previewImage ? (
+          <img
+            src={previewImage}
+            alt={project.name}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.025]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-black/[0.08] bg-white/70 text-[#526158]">
+              <ImageIcon className="h-6 w-6" />
+            </div>
+          </div>
+        )}
+
+        <div className="absolute left-4 top-4">
+          <Badge
+            variant="outline"
+            className="rounded-full border-white/70 bg-white/90 text-xs font-medium text-[#314238] shadow-none backdrop-blur-sm"
+          >
+            Active project
+          </Badge>
+        </div>
       </div>
 
-      <p className="mt-6 text-sm text-muted-foreground">{label}</p>
+      {/* Content */}
+      <div className="p-6 sm:p-7">
+        <div className="flex items-start justify-between gap-5">
+          <div className="min-w-0">
+            <h3 className="text-2xl font-semibold tracking-[-0.035em]">
+              {project.name}
+            </h3>
 
-      <p className="mt-1 text-3xl font-semibold tracking-[-0.04em]">
-        {value}
-      </p>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              {project.description ||
+                "Field evidence collection and project documentation."}
+            </p>
+          </div>
+        </div>
 
-      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        {/* Stats */}
+        <div className="mt-6 grid grid-cols-3 border-y border-black/[0.07] py-4">
+          <Stat
+            value={assets}
+            label={assets === 1 ? "asset" : "assets"}
+          />
+
+          <Stat
+            value={sites}
+            label={sites === 1 ? "site" : "sites"}
+            bordered
+          />
+
+          <Stat
+            value={verified}
+            label="verified"
+            bordered
+          />
+        </div>
+
+        {/* Sites */}
+        {overview?.sites && overview.sites.length > 0 && (
+          <div className="mt-5">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Field sites
+            </p>
+
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {overview.sites.slice(0, 3).map((site) => (
+                <span
+                  key={site.id}
+                  className="text-xs text-[#4d5b53]"
+                >
+                  {site.name}
+                </span>
+              ))}
+
+              {overview.sites.length > 3 && (
+                <span className="text-xs text-muted-foreground">
+                  +{overview.sites.length - 3} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Action */}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-7 flex w-full items-center justify-between border-t border-black/[0.07] pt-5 text-sm font-medium text-[#314238]"
+        >
+          <span>Open project</span>
+
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.1] transition-all group-hover:border-[#172019] group-hover:bg-[#172019] group-hover:text-white">
+            <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          </span>
+        </button>
+      </div>
     </Card>
   );
 }
 
-function SectionHeading({
-  title,
-  description,
-  action,
+function Stat({
+  value,
+  label,
+  bordered = false,
 }: {
-  title: string;
-  description: string;
-  action: string;
+  value: number;
+  label: string;
+  bordered?: boolean;
 }) {
   return (
-    <div className="flex items-end justify-between gap-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-[-0.025em]">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
+    <div
+      className={
+        bordered
+          ? "border-l border-black/[0.07] pl-4"
+          : ""
+      }
+    >
+      <p className="text-lg font-semibold tracking-[-0.025em]">
+        {value}
+      </p>
 
-      <Button
-        variant="ghost"
-        className="hidden gap-1.5 text-sm text-muted-foreground sm:flex"
-      >
-        {action}
-        <ArrowUpRight className="h-4 w-4" />
-      </Button>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">
+        {label}
+      </p>
     </div>
   );
 }
 
-function ActivityItem({
+function ProjectCardSkeleton() {
+  return (
+    <Card className="overflow-hidden rounded-xl border-black/[0.08] bg-white p-0 shadow-none">
+      <div className="aspect-[16/8.5] animate-pulse bg-[#e9ece8]" />
+
+      <div className="space-y-5 p-7">
+        <div className="space-y-3">
+          <div className="h-7 w-3/5 animate-pulse bg-[#e9ece8]" />
+          <div className="h-4 w-full animate-pulse bg-[#e9ece8]" />
+          <div className="h-4 w-4/5 animate-pulse bg-[#e9ece8]" />
+        </div>
+
+        <div className="grid grid-cols-3 border-y border-black/[0.07] py-4">
+          <div className="h-9 animate-pulse bg-[#e9ece8]" />
+          <div className="mx-4 h-9 animate-pulse bg-[#e9ece8]" />
+          <div className="h-9 animate-pulse bg-[#e9ece8]" />
+        </div>
+
+        <div className="h-10 animate-pulse bg-[#e9ece8]" />
+      </div>
+    </Card>
+  );
+}
+
+function FeatureItem({
   icon,
   title,
   description,
@@ -447,14 +525,19 @@ function ActivityItem({
   description: string;
 }) {
   return (
-    <div className="flex gap-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/70">
+    <div className="flex gap-4 border-b border-black/[0.07] p-6 last:border-b-0 sm:nth-[2]:border-b sm:nth-[3]:border-b-0 sm:nth-[4]:border-b-0">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0f3ef] text-[#314238]">
         {icon}
       </div>
 
       <div>
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-white/50">{description}</p>
+        <h3 className="text-sm font-semibold">
+          {title}
+        </h3>
+
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
       </div>
     </div>
   );

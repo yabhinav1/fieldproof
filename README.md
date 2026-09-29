@@ -8,7 +8,7 @@ An impact and sustainability media platform for NGOs, built on Cloudinary.
 
 **[Live demo](https://fieldproof-kappa.vercel.app)** &nbsp;·&nbsp; [Two-minute tour](#two-minute-tour) &nbsp;·&nbsp; [How Cloudinary is used](#how-cloudinary-is-used) &nbsp;·&nbsp; [API reference](docs/API.md)
 
-![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Cloudinary](https://img.shields.io/badge/Cloudinary-media_pipeline-3448C5?logo=cloudinary&logoColor=white) ![Postgres + pgvector](https://img.shields.io/badge/Postgres-pgvector-4169E1?logo=postgresql&logoColor=white) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-2ea44f)](LICENSE)
+[![CI](https://github.com/yabhinav1/fieldproof/actions/workflows/ci.yml/badge.svg)](https://github.com/yabhinav1/fieldproof/actions/workflows/ci.yml) ![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Cloudinary](https://img.shields.io/badge/Cloudinary-media_pipeline-3448C5?logo=cloudinary&logoColor=white) ![Postgres + pgvector](https://img.shields.io/badge/Postgres-pgvector-4169E1?logo=postgresql&logoColor=white) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-2ea44f)](LICENSE)
 
 <a href="https://fieldproof-kappa.vercel.app">
   <img src="docs/screenshots/hero.webp" alt="FieldProof comparing a before and an after photo of a plantation site, with the AI assessment underneath" width="100%">
@@ -128,7 +128,7 @@ flowchart LR
 | Media | Cloudinary: uploads, analysis add-ons, transformations, overlays, delivery |
 | Data | Postgres with pgvector through Drizzle ORM. Neon in production, embedded PGlite locally |
 | AI | Gemini by default (free tier), Claude as an alternative. Gemini or Voyage embeddings |
-| Quality | 55 unit and integration tests (Vitest), ESLint and a strict type check |
+| Quality | 55 unit and integration tests (Vitest), ESLint, type check and build in CI |
 
 Everything runs on free tiers. No card is needed.
 

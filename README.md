@@ -230,10 +230,11 @@ Full endpoint documentation is in **[docs/API.md](docs/API.md)**.
 
 ## Team
 
-| | Focus |
-|---|---|
-| [@yabhinav1](https://github.com/yabhinav1) | Backend, Cloudinary pipeline, AI and search |
-| [@tiwarianikettt](https://github.com/tiwarianikettt) | Frontend and user experience |
+| Member | | Focus |
+|---|---|---|
+| Abhinav | [@yabhinav1](https://github.com/yabhinav1) | Backend, Cloudinary pipeline, AI and search |
+| Aniket Tiwari | [@tiwarianikettt](https://github.com/tiwarianikettt) | Frontend and user experience |
+| Jatin Rohilla | [@ByteJatin](https://github.com/ByteJatin) | Design and testing |
 
 ## Credits and licence
 

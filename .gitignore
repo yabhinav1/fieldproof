@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files; the template is the one exception
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -43,14 +44,8 @@ next-env.d.ts
 # local embedded database
 .pglite/
 
-# keep the env template
-!.env.example
-
 # downloaded demo photos (keep manifest + attribution, not the images)
 data/**/*.jpg
 data/**/*.jpeg
 data/index.json
 data/dropped-pageids.json
-
-.vercel
-.env*

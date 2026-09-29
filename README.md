@@ -62,11 +62,24 @@ Key directories:
 - `src/server/ai/compare.ts`, `narrative.ts` — the two prompts, Zod-validated on the way back
 - `src/server/cloudinary.ts` — all Cloudinary usage; every derived URL is recorded in `provenance`
 
-Frontend lives in `src/app/(app)` and `src/components` (not started yet). Backend code never imports from there.
+Frontend:
+
+- `src/app/page.tsx` — project list; `src/app/project/[id]` — project dashboard
+- `src/app/gallery`, `comparison`, `search`, `report` — one page per workflow. Each opens on the project named in `?projectId=`, and falls back to the first project without it. The gallery also accepts `?locationId=` and `?asset=`.
+- `src/lib/api.ts` — `apiFetch`, the one place that reads the API's response envelope and error messages
+- `src/lib/use-projects.ts` — project list and active project, shared by the four workflow pages
+- `src/lib/cloudinary-url.ts` — derived image URLs; grids load thumbnails, never originals
+- `src/lib/locations.ts` — the rule for which assets belong to a field location
+
+Backend code never imports from `src/app`, `src/components` or `src/lib`.
 
 ## API
 
 All responses are `{ ok: true, data }` or `{ ok: false, error, details? }`. IDs are UUIDs. Dates are ISO strings.
+
+`error` is always a message that can be shown to a user. Statuses: `400` invalid input (including an id that is not a UUID), `404` not found, `409` conflict such as a project slug that is already taken, `429` AI provider rate limit, `502` / `503` a provider failed or is not configured. A `500` never includes internals in production.
+
+A bare date in a `to` filter, such as `to=2026-09-01`, includes that whole day.
 
 ### Health
 `GET /api/health` → database driver and which integrations are configured.
@@ -126,8 +139,10 @@ Flag codes: `no_gps`, `no_capture_date` (informational), `far_from_site`, `no_si
 Comparison fields: `mode`, `beforeUrl`, `afterUrl` (same 1024×768 crop for the slider), `headline`, `summary`, `sameLocation`, `locationConfidence`, `metrics[] { name, direction, reason }` where name ∈ `vegetation_cover | waste_and_debris | water_clarity | human_activity | infrastructure` and direction ∈ `increased | decreased | unchanged | not_visible`.
 
 ### Search
-`GET /api/search?q=plastic+waste+near+river&projectId=…&siteId=&phase=&from=&to=&verifiedOnly=true&limit=30`
+`GET /api/search?q=plastic+waste+near+river&projectId=…&siteId=&locationId=&phase=&from=&to=&verifiedOnly=true&limit=30`
 → `{ mode: "hybrid" | "keyword", hits: [{ asset, score, matchedBy: ["semantic" | "keyword"] }] }`
+
+`score` is a reciprocal-rank-fusion sum, useful for ordering only: its maximum is about 0.03, so it is not a percentage. The UI shows each hit relative to the best one. If the embedding provider is unavailable the search still answers, with keyword results.
 
 ### Reports
 | Method | Path | Body / query | Returns |

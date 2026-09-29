@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -13,6 +13,10 @@ import {
   ShieldCheck,
   Waves,
 } from "lucide-react";
+
+import { apiFetch, errorMessage } from "@/lib/api";
+import { thumbnailUrl } from "@/lib/cloudinary-url";
+import { assetBelongsToLocation } from "@/lib/locations";
 
 type Site = {
   id: string;
@@ -32,6 +36,15 @@ type Project = {
   name: string;
   description?: string | null;
   sites?: Site[];
+  /** Exact counts from the database; the asset list below is capped. */
+  totals?: {
+    total: number;
+    verified: number;
+    before: number;
+    during: number;
+    after: number;
+    unknown: number;
+  };
 };
 
 type Location = {
@@ -60,26 +73,23 @@ type Comparison = {
   siteId: string | null;
   beforeAssetId: string;
   afterAssetId: string;
-  headline: string;
-  summary: string;
-  sameLocation: boolean;
-  locationConfidence: number;
+  headline: string | null;
+  summary: string | null;
+  sameLocation: boolean | null;
+  locationConfidence: number | null;
   metrics: {
     name: string;
     reason: string;
     direction: string;
   }[];
-  model: string;
+  model: string | null;
   mode: "same_spot" | "representative";
   beforeUrl: string;
   afterUrl: string;
 };
 
 export default function ProjectDashboard() {
-  const params = useParams();
-  const router = useRouter();
-
-  const projectId = params.id as string;
+  const { id: projectId } = useParams<{ id: string }>();
 
   const [project, setProject] = useState<Project | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -92,107 +102,68 @@ export default function ProjectDashboard() {
   useEffect(() => {
     if (!projectId) return;
 
+    let cancelled = false;
+
     async function loadProject() {
       try {
         setLoading(true);
         setError("");
 
+        const query = `projectId=${encodeURIComponent(projectId)}`;
+        const fresh = { cache: "no-store" } as const;
+
+        // Only the project itself is required. If a secondary list fails,
+        // its section shows as empty instead of taking the dashboard down.
         const [
-          projectResponse,
-          assetsResponse,
-          comparisonsResponse,
-          locationsResponse,
+          projectData,
+          assetList,
+          comparisonList,
+          locationList,
         ] = await Promise.all([
-          fetch(`/api/projects/${projectId}`, {
-            cache: "no-store",
-          }),
-
-          fetch(
-            `/api/assets?projectId=${encodeURIComponent(
-              projectId
-            )}&limit=500`,
-            {
-              cache: "no-store",
-            }
+          apiFetch<Project>(
+            `/api/projects/${projectId}`,
+            fresh,
+            "Unable to load project."
           ),
 
-          fetch(
-            `/api/comparisons?projectId=${encodeURIComponent(
-              projectId
-            )}`,
-            {
-              cache: "no-store",
-            }
-          ),
+          apiFetch<Asset[]>(
+            `/api/assets?${query}&limit=500`,
+            fresh
+          ).catch(() => []),
 
-          fetch(
-            `/api/locations?projectId=${encodeURIComponent(
-              projectId
-            )}`,
-            {
-              cache: "no-store",
-            }
-          ),
+          apiFetch<Comparison[]>(
+            `/api/comparisons?${query}`,
+            fresh
+          ).catch(() => []),
+
+          apiFetch<Location[]>(
+            `/api/locations?${query}`,
+            fresh
+          ).catch(() => []),
         ]);
 
-        const projectResult = await projectResponse.json();
-        const assetsResult = await assetsResponse.json();
-        const comparisonsResult =
-          await comparisonsResponse.json();
-        const locationsResult = await locationsResponse.json();
+        if (cancelled) return;
 
-        if (!projectResponse.ok || !projectResult.ok) {
-          throw new Error(
-            projectResult.error ||
-              "Unable to load project."
-          );
-        }
-
-        setProject(projectResult.data);
-
-        if (
-          assetsResponse.ok &&
-          assetsResult.ok &&
-          Array.isArray(assetsResult.data)
-        ) {
-          setAssets(assetsResult.data);
-        } else {
-          setAssets([]);
-        }
-
-        if (
-          comparisonsResponse.ok &&
-          comparisonsResult.ok &&
-          Array.isArray(comparisonsResult.data)
-        ) {
-          setComparisons(comparisonsResult.data);
-        } else {
-          setComparisons([]);
-        }
-
-        if (
-          locationsResponse.ok &&
-          locationsResult.ok &&
-          Array.isArray(locationsResult.data)
-        ) {
-          setLocations(locationsResult.data);
-        } else {
-          setLocations([]);
-        }
+        setProject(projectData);
+        setAssets(assetList ?? []);
+        setComparisons(comparisonList ?? []);
+        setLocations(locationList ?? []);
       } catch (err) {
-        console.error(err);
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load project."
-        );
+        if (!cancelled) {
+          setError(errorMessage(err, "Unable to load project."));
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     loadProject();
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   if (loading) {
@@ -203,14 +174,13 @@ export default function ProjectDashboard() {
     return (
       <main className="min-h-screen bg-[#f7f8f6] px-6 py-10 text-[#172019]">
         <div className="mx-auto max-w-[1280px]">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
+          <Link
+            href="/"
             className="mb-10 flex items-center gap-2 text-sm text-muted-foreground hover:text-[#172019]"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to projects
-          </button>
+          </Link>
 
           <div className="border border-black/[0.08] bg-white p-10">
             <h1 className="text-2xl font-semibold">
@@ -228,14 +198,19 @@ export default function ProjectDashboard() {
   }
 
   /*
-   * Calculate dashboard totals from the actual project
-   * responses rather than relying on cached totals.
+   * The project response carries exact counts straight from the
+   * database. The asset list stops at 500, so counting it would
+   * under-report a large project; it is only the fallback.
    */
-  const totalAssets = assets.length;
+  const totalAssets = project.totals?.total ?? assets.length;
 
-  const verifiedAssets = assets.filter(
-    (asset) => asset.verified
-  ).length;
+  const verifiedAssets =
+    project.totals?.verified ??
+    assets.filter((asset) => asset.verified).length;
+
+  const phaseCount = (phase: Asset["phase"]) =>
+    project.totals?.[phase] ??
+    assets.filter((asset) => asset.phase === phase).length;
 
   const totalComparisons = comparisons.length;
 
@@ -268,21 +243,9 @@ export default function ProjectDashboard() {
   const getLocationAssetCount = (
     location: Location
   ) => {
-    return assets.filter((asset) => {
-      if (asset.locationId === location.id) {
-        return true;
-      }
-
-      if (
-        location.siteId &&
-        asset.siteId === location.siteId &&
-        !asset.locationId
-      ) {
-        return true;
-      }
-
-      return false;
-    }).length;
+    return assets.filter((asset) =>
+      assetBelongsToLocation(asset, location)
+    ).length;
   };
 
   /*
@@ -303,11 +266,7 @@ export default function ProjectDashboard() {
       {/* Header */}
       <header className="border-b border-black/[0.07] bg-[#f7f8f6]">
         <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-6 lg:px-10">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="flex items-center gap-3"
-          >
+          <Link href="/" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#172019] text-white">
               <span className="text-sm font-semibold">
                 F
@@ -323,16 +282,15 @@ export default function ProjectDashboard() {
                 Field evidence
               </p>
             </div>
-          </button>
+          </Link>
 
-          <button
-            type="button"
-            onClick={() => router.push("/")}
+          <Link
+            href="/"
             className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-[#172019]"
           >
             <ArrowLeft className="h-4 w-4" />
             Projects
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -461,11 +419,13 @@ export default function ProjectDashboard() {
                     className="group relative aspect-square overflow-hidden bg-[#e9ece8]"
                   >
                     <img
-                      src={asset.secureUrl}
+                      src={thumbnailUrl(asset.secureUrl)}
                       alt={
                         asset.aiCaption ||
-                        "Field evidence"
+                        `${asset.phase} field evidence`
                       }
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                     />
 
@@ -644,38 +604,22 @@ export default function ProjectDashboard() {
           <div className="grid divide-y divide-black/[0.07] sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
             <PhaseBlock
               label="Before"
-              count={
-                assets.filter(
-                  (asset) => asset.phase === "before"
-                ).length
-              }
+              count={phaseCount("before")}
             />
 
             <PhaseBlock
               label="During"
-              count={
-                assets.filter(
-                  (asset) => asset.phase === "during"
-                ).length
-              }
+              count={phaseCount("during")}
             />
 
             <PhaseBlock
               label="After"
-              count={
-                assets.filter(
-                  (asset) => asset.phase === "after"
-                ).length
-              }
+              count={phaseCount("after")}
             />
 
             <PhaseBlock
               label="Unknown"
-              count={
-                assets.filter(
-                  (asset) => asset.phase === "unknown"
-                ).length
-              }
+              count={phaseCount("unknown")}
             />
           </div>
         </div>
@@ -733,13 +677,9 @@ export default function ProjectDashboard() {
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-8 text-xs text-muted-foreground lg:px-10">
           <span>FieldProof</span>
 
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="hover:text-[#172019]"
-          >
+          <Link href="/" className="hover:text-[#172019]">
             Back to projects
-          </button>
+          </Link>
         </div>
       </footer>
     </main>

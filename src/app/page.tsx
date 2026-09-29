@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowUpRight,
   FolderOpen,
@@ -14,6 +14,8 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { apiFetch, errorMessage } from "@/lib/api";
+import { PROJECT_COVER, cloudinaryVariant } from "@/lib/cloudinary-url";
 
 type Project = {
   id: string;
@@ -48,127 +50,86 @@ type ProjectCardData = {
 };
 
 export default function Home() {
-  const router = useRouter();
-
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectData, setProjectData] = useState<
     Record<string, ProjectCardData>
   >({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadProjects() {
+      let projectList: Project[];
+
       try {
-        setLoading(true);
-
-        const response = await fetch("/api/projects", {
-          cache: "no-store",
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.ok) {
-          throw new Error(
-            result.error || "Failed to load projects."
-          );
+        projectList =
+          (await apiFetch<Project[]>(
+            "/api/projects",
+            { cache: "no-store" },
+            "Failed to load projects."
+          )) ?? [];
+      } catch (err) {
+        if (!cancelled) {
+          setError(errorMessage(err, "Failed to load projects."));
+          setLoading(false);
         }
 
-        const projectList: Project[] = result.data ?? [];
+        return;
+      }
 
-        setProjects(projectList);
+      if (cancelled) return;
 
-        const details = await Promise.all(
-          projectList.map(async (project) => {
-            let overview: ProjectOverview | undefined;
-            let previewImage: string | undefined;
+      // Show the list now; each card fills in as its own details arrive.
+      setProjects(projectList);
+      setError("");
+      setLoading(false);
 
-            try {
-              const overviewResponse = await fetch(
-                `/api/projects/${project.id}`,
-                {
-                  cache: "no-store",
-                }
-              );
-
-              const overviewResult =
-                await overviewResponse.json();
-
-              if (
-                overviewResponse.ok &&
-                overviewResult.ok
-              ) {
-                overview = overviewResult.data;
-              }
-            } catch {
-              // Project remains visible if overview fails.
-            }
-
-            try {
-              const assetsResponse = await fetch(
-                `/api/assets?projectId=${project.id}&limit=20`,
-                {
-                  cache: "no-store",
-                }
-              );
-
-              const assetsResult =
-                await assetsResponse.json();
-
-              if (
-                assetsResponse.ok &&
-                assetsResult.ok &&
-                Array.isArray(assetsResult.data)
-              ) {
-                const firstImage = assetsResult.data.find(
-                  (asset: { secureUrl?: string }) =>
-                    Boolean(asset.secureUrl)
-                );
-
-                previewImage = firstImage?.secureUrl;
-              }
-            } catch {
-              // Card simply uses the fallback if no image is available.
-            }
-
-            return {
-              project,
-              overview,
-              previewImage,
-            };
-          })
-        );
-
-        const mapped: Record<string, ProjectCardData> = {};
-
-        for (const detail of details) {
-          mapped[detail.project.id] = detail;
-        }
-
-        setProjectData(mapped);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
+      for (const project of projectList) {
+        loadCard(project);
       }
     }
 
-    loadProjects();
-  }, []);
+    async function loadCard(project: Project) {
+      const [overview, latest] = await Promise.all([
+        // A card stays visible with whatever part of it could be loaded.
+        apiFetch<ProjectOverview>(`/api/projects/${project.id}`, {
+          cache: "no-store",
+        }).catch(() => undefined),
 
-  function openProject(projectId: string) {
-    router.push(`/project/${projectId}`);
-  }
+        apiFetch<Array<{ secureUrl: string }>>(
+          `/api/assets?projectId=${project.id}&limit=1`,
+          { cache: "no-store" }
+        ).catch(() => []),
+      ]);
+
+      if (cancelled) return;
+
+      setProjectData((current) => ({
+        ...current,
+        [project.id]: {
+          project,
+          overview,
+          previewImage: latest?.[0]?.secureUrl,
+        },
+      }));
+    }
+
+    loadProjects();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
 
   return (
     <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
       {/* Header */}
       <header className="border-b border-black/[0.07] bg-[#f7f8f6]">
         <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-6 lg:px-10">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="flex items-center gap-3"
-          >
+          <Link href="/" className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#172019] text-white">
               <Sparkles className="h-4 w-4" />
             </div>
@@ -182,7 +143,7 @@ export default function Home() {
                 Field evidence
               </p>
             </div>
-          </button>
+          </Link>
 
           <span className="text-sm text-muted-foreground">
             Projects
@@ -220,7 +181,9 @@ export default function Home() {
               <span>
                 {loading
                   ? "Loading projects..."
-                  : `${projects.length} ${projects.length === 1
+                  : error
+                    ? "Projects unavailable"
+                    : `${projects.length} ${projects.length === 1
                     ? "project"
                     : "projects"
                   }`}
@@ -254,6 +217,30 @@ export default function Home() {
               <ProjectCardSkeleton key={item} />
             ))}
           </div>
+        ) : error ? (
+          <Card
+            role="alert"
+            className="rounded-xl border-red-200 bg-white p-12 text-center shadow-none"
+          >
+            <h3 className="text-lg font-semibold">
+              Projects could not be loaded
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setAttempt((current) => current + 1);
+              }}
+              className="mx-auto mt-6 rounded-lg bg-[#172019] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#29382f]"
+            >
+              Try again
+            </button>
+          </Card>
         ) : projects.length === 0 ? (
           <Card className="rounded-xl border-dashed bg-white p-12 text-center shadow-none">
             <FolderOpen className="mx-auto h-7 w-7 text-muted-foreground" />
@@ -278,7 +265,6 @@ export default function Home() {
                   project={project}
                   overview={data?.overview}
                   previewImage={data?.previewImage}
-                  onOpen={() => openProject(project.id)}
                 />
               );
             })}
@@ -346,12 +332,10 @@ function ProjectCard({
   project,
   overview,
   previewImage,
-  onOpen,
 }: {
   project: Project;
   overview?: ProjectOverview;
   previewImage?: string;
-  onOpen: () => void;
 }) {
   const assets = overview?.totals?.assets ?? 0;
   const verified = overview?.totals?.verified ?? 0;
@@ -362,9 +346,12 @@ function ProjectCard({
       {/* Image */}
       <div className="relative aspect-[16/8.5] overflow-hidden bg-[#e9ece8]">
         {previewImage ? (
+          // The project name is the heading below, so the cover is decorative.
           <img
-            src={previewImage}
-            alt={project.name}
+            src={cloudinaryVariant(previewImage, PROJECT_COVER)}
+            alt=""
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.025]"
           />
         ) : (
@@ -447,9 +434,8 @@ function ProjectCard({
         )}
 
         {/* Action */}
-        <button
-          type="button"
-          onClick={onOpen}
+        <Link
+          href={`/project/${project.id}`}
           className="mt-7 flex w-full items-center justify-between border-t border-black/[0.07] pt-5 text-sm font-medium text-[#314238]"
         >
           <span>Open project</span>
@@ -457,7 +443,7 @@ function ProjectCard({
           <span className="flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.1] transition-all group-hover:border-[#172019] group-hover:bg-[#172019] group-hover:text-white">
             <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
           </span>
-        </button>
+        </Link>
       </div>
     </Card>
   );

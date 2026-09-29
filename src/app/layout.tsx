@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FieldProof",
+  title: { default: "FieldProof", template: "%s · FieldProof" },
   description: "Field evidence, organised: photos by site and phase, before-and-after change, search, and impact reports.",
 };
 

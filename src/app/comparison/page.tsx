@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useId, useMemo, useState } from "react";
+import Link from "next/link";
 
-const DEFAULT_PROJECT_ID =
-    "acc78062-0358-43a1-a6e2-44f7af1793b4";
-
-type Project = {
-    id: string;
-    name: string;
-    description?: string | null;
-};
+import { apiFetch, errorMessage, jsonRequest } from "@/lib/api";
+import { thumbnailUrl } from "@/lib/cloudinary-url";
+import { assetBelongsToLocation } from "@/lib/locations";
+import { useProjects } from "@/lib/use-projects";
 
 type Location = {
     id: string;
@@ -38,25 +35,45 @@ type Metric = {
     direction: string;
 };
 
+type ComparisonMode = "same_spot" | "representative";
+
 type Comparison = {
     id: string;
     siteId: string | null;
     beforeAssetId: string;
     afterAssetId: string;
-    headline: string;
-    summary: string;
-    sameLocation: boolean;
-    locationConfidence: number;
+    headline: string | null;
+    summary: string | null;
+    sameLocation: boolean | null;
+    locationConfidence: number | null;
     metrics: Metric[];
-    model: string;
-    mode: "same_spot" | "representative";
+    model: string | null;
+    mode: ComparisonMode;
     beforeUrl: string;
     afterUrl: string;
 };
 
+const modeLabels: Record<ComparisonMode, string> = {
+    same_spot: "Same spot",
+    representative: "Representative",
+};
+
 export default function ComparisonPage() {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [projectId, setProjectId] = useState(DEFAULT_PROJECT_ID);
+    return (
+        <Suspense fallback={null}>
+            <ComparisonView />
+        </Suspense>
+    );
+}
+
+function ComparisonView() {
+    const {
+        projects,
+        projectId,
+        setProjectId,
+        loading: loadingProjects,
+        error: projectsError,
+    } = useProjects();
 
     const [locations, setLocations] = useState<Location[]>([]);
     const [assets, setAssets] = useState<Asset[]>([]);
@@ -68,102 +85,95 @@ export default function ComparisonPage() {
 
     const [selectedBeforeId, setSelectedBeforeId] = useState("");
     const [selectedAfterId, setSelectedAfterId] = useState("");
+    const [mode, setMode] = useState<ComparisonMode>("same_spot");
 
     const [comparisonData, setComparisonData] =
         useState<Comparison | null>(null);
 
-    const [loadingProjects, setLoadingProjects] = useState(true);
     const [loadingEvidence, setLoadingEvidence] = useState(false);
     const [comparing, setComparing] = useState(false);
     const [error, setError] = useState("");
 
-    useEffect(() => {
-        async function loadProjects() {
-            try {
-                const response = await fetch("/api/projects");
-
-                if (!response.ok) {
-                    throw new Error("Failed to load projects");
-                }
-
-                const result = await response.json();
-                setProjects(result.data ?? []);
-            } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load projects"
-                );
-            } finally {
-                setLoadingProjects(false);
-            }
-        }
-
-        loadProjects();
-    }, []);
+    const projectSelectId = useId();
+    const locationInputId = useId();
+    const locationListId = useId();
+    const modeSelectId = useId();
 
     useEffect(() => {
         if (!projectId) return;
 
+        let cancelled = false;
+
         async function loadProjectEvidence() {
             try {
                 setLoadingEvidence(true);
-                setError("");
 
-                setSelectedLocationId("");
-                setLocationSearch("");
-                setSelectedBeforeId("");
-                setSelectedAfterId("");
-                setComparisonData(null);
+                const query = `projectId=${encodeURIComponent(projectId)}`;
 
-                const [locationsResponse, assetsResponse, comparisonsResponse] =
+                const [locationList, assetList, comparisonList] =
                     await Promise.all([
-                        fetch(
-                            `/api/locations?projectId=${encodeURIComponent(projectId)}`
+                        apiFetch<Location[]>(
+                            `/api/locations?${query}`,
+                            undefined,
+                            "Failed to load field locations"
                         ),
-                        fetch(
-                            `/api/assets?projectId=${encodeURIComponent(
-                                projectId
-                            )}&limit=500`
+                        apiFetch<Asset[]>(
+                            `/api/assets?${query}&limit=500`,
+                            undefined,
+                            "Failed to load evidence"
                         ),
-                        fetch(
-                            `/api/comparisons?projectId=${encodeURIComponent(projectId)}`
-                        ),
+                        /* Past comparisons are optional; the page works without them. */
+                        apiFetch<Comparison[]>(
+                            `/api/comparisons?${query}`
+                        ).catch(() => []),
                     ]);
 
-                if (!locationsResponse.ok) {
-                    throw new Error("Failed to load field locations");
-                }
+                if (cancelled) return;
 
-                if (!assetsResponse.ok) {
-                    throw new Error("Failed to load evidence");
-                }
-
-                const locationsResult = await locationsResponse.json();
-                const assetsResult = await assetsResponse.json();
-
-                setLocations(locationsResult.data ?? []);
-                setAssets(assetsResult.data ?? []);
-
-                if (comparisonsResponse.ok) {
-                    const comparisonsResult = await comparisonsResponse.json();
-                    setSavedComparisons(comparisonsResult.data ?? []);
-                } else {
-                    setSavedComparisons([]);
-                }
+                setLocations(locationList ?? []);
+                setAssets(assetList ?? []);
+                setSavedComparisons(comparisonList ?? []);
             } catch (err) {
+                if (cancelled) return;
+
+                setLocations([]);
+                setAssets([]);
+                setSavedComparisons([]);
+
                 setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load comparison data"
+                    errorMessage(err, "Failed to load comparison data")
                 );
             } finally {
-                setLoadingEvidence(false);
+                if (!cancelled) {
+                    setLoadingEvidence(false);
+                }
             }
         }
 
         loadProjectEvidence();
+
+        return () => {
+            cancelled = true;
+        };
     }, [projectId]);
+
+    /* Nothing from the previous project may linger under the new one. */
+    function changeProject(id: string) {
+        setProjectId(id);
+
+        setLocations([]);
+        setAssets([]);
+        setSavedComparisons([]);
+
+        setSelectedLocationId("");
+        setLocationSearch("");
+        setLocationDropdownOpen(false);
+
+        setSelectedBeforeId("");
+        setSelectedAfterId("");
+        setComparisonData(null);
+        setError("");
+    }
 
     const selectedProject = projects.find(
         (project) => project.id === projectId
@@ -184,23 +194,12 @@ export default function ComparisonPage() {
     }, [locations, locationSearch]);
 
     const locationAssets = useMemo(() => {
-        if (!selectedLocationId) return [];
+        if (!selectedLocation) return [];
 
-        return assets.filter((asset) => {
-            if (asset.locationId === selectedLocationId) {
-                return true;
-            }
-
-            if (
-                selectedLocation?.siteId &&
-                asset.siteId === selectedLocation.siteId
-            ) {
-                return true;
-            }
-
-            return false;
-        });
-    }, [assets, selectedLocationId, selectedLocation]);
+        return assets.filter((asset) =>
+            assetBelongsToLocation(asset, selectedLocation)
+        );
+    }, [assets, selectedLocation]);
 
     const beforeAssets = useMemo(
         () =>
@@ -234,64 +233,70 @@ export default function ComparisonPage() {
         (asset) => asset.id === selectedAfterId
     );
 
+    /*
+     * The assessment on screen describes the pair it was made from,
+     * which is not always the pair currently picked above.
+     */
+    const comparedBefore = assets.find(
+        (asset) => asset.id === comparisonData?.beforeAssetId
+    );
+
+    const comparedAfter = assets.find(
+        (asset) => asset.id === comparisonData?.afterAssetId
+    );
+
+    const comparedLocation = locations.find((location) =>
+        [comparedAfter, comparedBefore].some(
+            (asset) => asset && assetBelongsToLocation(asset, location)
+        )
+    );
+
     function selectLocation(location: Location) {
         setSelectedLocationId(location.id);
-        setLocationSearch(location.name);
+        setLocationSearch("");
         setLocationDropdownOpen(false);
         setComparisonData(null);
 
-        const locationBefore = assets
-            .filter(
-                (asset) =>
-                    (asset.locationId === location.id ||
-                        (location.siteId && asset.siteId === location.siteId)) &&
-                    asset.phase === "before"
-            )
+        const evidence = assets
+            .filter((asset) => assetBelongsToLocation(asset, location))
             .sort(sortAssetsForComparison);
 
-        const locationAfter = assets
-            .filter(
-                (asset) =>
-                    (asset.locationId === location.id ||
-                        (location.siteId && asset.siteId === location.siteId)) &&
-                    asset.phase === "after"
-            )
-            .sort(sortAssetsForComparison);
+        setSelectedBeforeId(
+            evidence.find((asset) => asset.phase === "before")?.id ?? ""
+        );
 
-        setSelectedBeforeId(locationBefore[0]?.id ?? "");
-        setSelectedAfterId(locationAfter[0]?.id ?? "");
+        setSelectedAfterId(
+            evidence.find((asset) => asset.phase === "after")?.id ?? ""
+        );
+    }
+
+    /* Picking a different photo makes the assessment on screen out of date. */
+    function selectBefore(id: string) {
+        setSelectedBeforeId(id);
+        setComparisonData(null);
+    }
+
+    function selectAfter(id: string) {
+        setSelectedAfterId(id);
+        setComparisonData(null);
     }
 
     async function runComparison() {
-        if (!selectedBeforeId || !selectedAfterId) return;
+        if (!selectedBeforeId || !selectedAfterId || comparing) return;
 
         try {
             setComparing(true);
             setError("");
 
-            const response = await fetch("/api/comparisons", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            const comparison = await apiFetch<Comparison>(
+                "/api/comparisons",
+                jsonRequest("POST", {
                     beforeAssetId: selectedBeforeId,
                     afterAssetId: selectedAfterId,
-                    mode: "same_spot",
+                    mode,
                 }),
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result?.error?.message ||
-                    result?.message ||
-                    "Failed to create comparison"
-                );
-            }
-
-            const comparison = result.data;
+                "Failed to create comparison"
+            );
 
             setComparisonData(comparison);
 
@@ -303,9 +308,7 @@ export default function ComparisonPage() {
             ]);
         } catch (err) {
             setError(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to create comparison"
+                errorMessage(err, "Failed to create comparison")
             );
         } finally {
             setComparing(false);
@@ -325,12 +328,16 @@ export default function ComparisonPage() {
                         </p>
                     </div>
 
-                    <a
-                        href="/project/acc78062-0358-43a1-a6e2-44f7af1793b4"
+                    <Link
+                        href={
+                            selectedProject
+                                ? `/project/${selectedProject.id}`
+                                : "/"
+                        }
                         className="text-sm text-muted-foreground transition hover:text-foreground"
                     >
-                        ← Project
-                    </a>
+                        ← {selectedProject ? selectedProject.name : "Projects"}
+                    </Link>
                 </div>
             </header>
 
@@ -355,19 +362,30 @@ export default function ComparisonPage() {
                 <section className="rounded-2xl border border-black/[0.08] bg-white p-5 shadow-sm">
                     <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
                         <div>
-                            <label className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                            <label
+                                htmlFor={projectSelectId}
+                                className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground"
+                            >
                                 Project
                             </label>
 
                             <select
+                                id={projectSelectId}
                                 value={projectId}
                                 onChange={(event) =>
-                                    setProjectId(event.target.value)
+                                    changeProject(event.target.value)
                                 }
-                                className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-4 text-sm outline-none focus:border-black/30"
+                                disabled={
+                                    loadingProjects ||
+                                    comparing ||
+                                    projects.length === 0
+                                }
+                                className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-4 text-sm outline-none focus:border-black/30 disabled:opacity-60"
                             >
                                 {loadingProjects ? (
                                     <option>Loading projects...</option>
+                                ) : projects.length === 0 ? (
+                                    <option>No projects found</option>
                                 ) : (
                                     projects.map((project) => (
                                         <option key={project.id} value={project.id}>
@@ -378,24 +396,63 @@ export default function ComparisonPage() {
                             </select>
                         </div>
 
-                        <div className="relative">
-                            <label className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <div
+                            className="relative"
+                            onBlur={(event) => {
+                                if (
+                                    !event.currentTarget.contains(
+                                        event.relatedTarget
+                                    )
+                                ) {
+                                    setLocationDropdownOpen(false);
+                                }
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                    setLocationDropdownOpen(false);
+                                }
+                            }}
+                        >
+                            <label
+                                htmlFor={locationInputId}
+                                className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground"
+                            >
                                 Field location
                             </label>
 
                             <input
-                                value={locationSearch}
+                                id={locationInputId}
+                                role="combobox"
+                                aria-expanded={locationDropdownOpen}
+                                aria-controls={locationListId}
+                                aria-autocomplete="list"
+                                autoComplete="off"
+                                value={
+                                    locationDropdownOpen
+                                        ? locationSearch
+                                        : (selectedLocation?.name ?? "")
+                                }
                                 onChange={(event) => {
                                     setLocationSearch(event.target.value);
                                     setLocationDropdownOpen(true);
                                 }}
-                                onFocus={() => setLocationDropdownOpen(true)}
+                                onFocus={() => {
+                                    /* Start empty so every location can be browsed. */
+                                    setLocationSearch("");
+                                    setLocationDropdownOpen(true);
+                                }}
+                                disabled={comparing}
                                 placeholder="Search or select a field location..."
-                                className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-4 text-sm outline-none focus:border-black/30"
+                                className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-4 text-sm outline-none focus:border-black/30 disabled:opacity-60"
                             />
 
                             {locationDropdownOpen && (
-                                <div className="absolute left-0 right-0 top-[4.7rem] z-30 max-h-80 overflow-y-auto rounded-xl border border-black/[0.08] bg-white p-1 shadow-xl">
+                                <div
+                                    id={locationListId}
+                                    role="listbox"
+                                    aria-label="Field locations"
+                                    className="absolute left-0 right-0 top-[4.7rem] z-30 max-h-80 overflow-y-auto rounded-xl border border-black/[0.08] bg-white p-1 shadow-xl"
+                                >
                                     {loadingEvidence ? (
                                         <div className="px-4 py-5 text-sm text-muted-foreground">
                                             Loading locations...
@@ -408,8 +465,7 @@ export default function ComparisonPage() {
                                         filteredLocations.map((location) => {
                                             const locationEvidence = assets.filter(
                                                 (asset) =>
-                                                    asset.locationId === location.id ||
-                                                    (location.siteId && asset.siteId === location.siteId)
+                                                    assetBelongsToLocation(asset, location)
                                             );
 
                                             const beforeCount =
@@ -431,6 +487,14 @@ export default function ComparisonPage() {
                                                 <button
                                                     key={location.id}
                                                     type="button"
+                                                    role="option"
+                                                    aria-selected={
+                                                        location.id === selectedLocationId
+                                                    }
+                                                    onMouseDown={(event) => {
+                                                        /* Keep focus in the field so the list is still there for the click. */
+                                                        event.preventDefault();
+                                                    }}
                                                     onClick={() =>
                                                         selectLocation(location)
                                                     }
@@ -454,11 +518,15 @@ export default function ComparisonPage() {
                     </div>
                 </section>
 
-                {error && (
-                    <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        {error}
+                {[projectsError, error].filter(Boolean).map((message) => (
+                    <div
+                        key={message}
+                        role="alert"
+                        className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                    >
+                        {message}
                     </div>
-                )}
+                ))}
 
                 {/* Selected location */}
                 {selectedLocation && (
@@ -487,7 +555,8 @@ export default function ComparisonPage() {
                                 description="Choose the evidence representing the earlier state."
                                 assets={beforeAssets}
                                 selectedId={selectedBeforeId}
-                                onSelect={setSelectedBeforeId}
+                                onSelect={selectBefore}
+                                disabled={comparing}
                             />
 
                             <EvidenceSelector
@@ -495,7 +564,8 @@ export default function ComparisonPage() {
                                 description="Choose the evidence representing the later state."
                                 assets={afterAssets}
                                 selectedId={selectedAfterId}
-                                onSelect={setSelectedAfterId}
+                                onSelect={selectAfter}
+                                disabled={comparing}
                             />
                         </div>
 
@@ -516,8 +586,10 @@ export default function ComparisonPage() {
                                     {duringAssets.map((asset) => (
                                         <img
                                             key={asset.id}
-                                            src={asset.secureUrl}
-                                            alt="During evidence"
+                                            src={thumbnailUrl(asset.secureUrl)}
+                                            alt={describeAsset(asset, "During")}
+                                            loading="lazy"
+                                            decoding="async"
                                             className="aspect-square w-full rounded-xl border object-cover"
                                         />
                                     ))}
@@ -543,20 +615,51 @@ export default function ComparisonPage() {
                                 </p>
                             </div>
 
-                            <button
-                                type="button"
-                                disabled={
-                                    !selectedBefore ||
-                                    !selectedAfter ||
-                                    comparing
-                                }
-                                onClick={runComparison}
-                                className="rounded-xl bg-[#172019] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#29382f] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                                {comparing
-                                    ? "Analyzing change..."
-                                    : "Compare these images →"}
-                            </button>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div className="flex items-center gap-2">
+                                    <label
+                                        htmlFor={modeSelectId}
+                                        className="text-xs text-muted-foreground"
+                                    >
+                                        Photos are
+                                    </label>
+
+                                    <select
+                                        id={modeSelectId}
+                                        value={mode}
+                                        onChange={(event) =>
+                                            setMode(
+                                                event.target.value as ComparisonMode
+                                            )
+                                        }
+                                        disabled={comparing}
+                                        className="h-10 rounded-lg border border-black/[0.1] bg-white px-3 text-sm outline-none focus:border-black/30 disabled:opacity-60"
+                                    >
+                                        <option value="same_spot">
+                                            from the same spot
+                                        </option>
+
+                                        <option value="representative">
+                                            representative of the site
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={
+                                        !selectedBefore ||
+                                        !selectedAfter ||
+                                        comparing
+                                    }
+                                    onClick={runComparison}
+                                    className="rounded-xl bg-[#172019] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#29382f] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {comparing
+                                        ? "Analyzing change..."
+                                        : "Compare these images →"}
+                                </button>
+                            </div>
                         </div>
                     </section>
                 )}
@@ -591,19 +694,23 @@ export default function ComparisonPage() {
                                             Vision assessment
                                         </p>
 
-                                        <p className="text-xs text-muted-foreground">
-                                            {comparisonData.model}
-                                        </p>
+                                        {comparisonData.model && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {comparisonData.model}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
                                 <h3 className="mt-6 text-2xl font-semibold tracking-tight">
-                                    {comparisonData.headline}
+                                    {comparisonData.headline ?? "Change assessment"}
                                 </h3>
 
-                                <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                                    {comparisonData.summary}
-                                </p>
+                                {comparisonData.summary && (
+                                    <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+                                        {comparisonData.summary}
+                                    </p>
+                                )}
 
                                 {comparisonData.metrics?.length > 0 && (
                                     <div className="mt-7 border-t pt-6">
@@ -622,7 +729,7 @@ export default function ComparisonPage() {
                                                     </p>
 
                                                     <p className="mt-2 text-sm font-semibold">
-                                                        {metric.direction}
+                                                        {formatMetricName(metric.direction)}
                                                     </p>
 
                                                     {metric.reason && (
@@ -640,41 +747,47 @@ export default function ComparisonPage() {
                             <div className="rounded-2xl border border-black/[0.08] bg-white">
                                 <InfoRow
                                     label="Location"
-                                    value={selectedLocation?.name ?? "—"}
+                                    value={comparedLocation?.name ?? "—"}
                                 />
 
                                 <InfoRow
                                     label="Same location"
                                     value={
-                                        comparisonData.sameLocation
-                                            ? "Confirmed"
-                                            : "Review needed"
+                                        comparisonData.sameLocation === null
+                                            ? "—"
+                                            : comparisonData.sameLocation
+                                              ? "Confirmed"
+                                              : "Review needed"
                                     }
                                 />
 
                                 <InfoRow
                                     label="Location confidence"
-                                    value={`${Math.round(
-                                        comparisonData.locationConfidence * 100
-                                    )}%`}
+                                    value={
+                                        comparisonData.locationConfidence === null
+                                            ? "—"
+                                            : `${Math.round(
+                                                  comparisonData.locationConfidence * 100
+                                              )}%`
+                                    }
                                 />
 
                                 <InfoRow
                                     label="Mode"
-                                    value={comparisonData.mode}
+                                    value={modeLabels[comparisonData.mode]}
                                 />
 
                                 <InfoRow
                                     label="Before"
-                                    value={selectedBefore?.capturedAt
-                                        ? formatDate(selectedBefore.capturedAt)
+                                    value={comparedBefore?.capturedAt
+                                        ? formatDate(comparedBefore.capturedAt)
                                         : "—"}
                                 />
 
                                 <InfoRow
                                     label="After"
-                                    value={selectedAfter?.capturedAt
-                                        ? formatDate(selectedAfter.capturedAt)
+                                    value={comparedAfter?.capturedAt
+                                        ? formatDate(comparedAfter.capturedAt)
                                         : "—"}
                                     last
                                 />
@@ -710,19 +823,23 @@ export default function ComparisonPage() {
                                         <img
                                             src={comparison.beforeUrl}
                                             alt="Before"
+                                            loading="lazy"
+                                            decoding="async"
                                             className="aspect-[4/3] w-full object-cover"
                                         />
 
                                         <img
                                             src={comparison.afterUrl}
                                             alt="After"
+                                            loading="lazy"
+                                            decoding="async"
                                             className="aspect-[4/3] w-full object-cover"
                                         />
                                     </div>
 
                                     <div className="p-4">
                                         <p className="text-sm font-semibold">
-                                            {comparison.headline}
+                                            {comparison.headline ?? "Change assessment"}
                                         </p>
 
                                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
@@ -745,12 +862,14 @@ function EvidenceSelector({
     assets,
     selectedId,
     onSelect,
+    disabled = false,
 }: {
     label: string;
     description: string;
     assets: Asset[];
     selectedId: string;
     onSelect: (id: string) => void;
+    disabled?: boolean;
 }) {
     const selected = assets.find(
         (asset) => asset.id === selectedId
@@ -788,7 +907,7 @@ function EvidenceSelector({
                         <div className="mt-5 overflow-hidden rounded-xl border">
                             <img
                                 src={selected.secureUrl}
-                                alt={label}
+                                alt={describeAsset(selected, label)}
                                 className="aspect-[16/10] w-full object-cover"
                             />
 
@@ -820,14 +939,18 @@ function EvidenceSelector({
                                 key={asset.id}
                                 type="button"
                                 onClick={() => onSelect(asset.id)}
-                                className={`relative overflow-hidden rounded-lg border-2 transition ${asset.id === selectedId
+                                disabled={disabled}
+                                aria-pressed={asset.id === selectedId}
+                                className={`relative overflow-hidden rounded-lg border-2 transition disabled:opacity-60 ${asset.id === selectedId
                                     ? "border-[#172019]"
                                     : "border-transparent hover:border-black/20"
                                     }`}
                             >
                                 <img
-                                    src={asset.secureUrl}
-                                    alt={label}
+                                    src={thumbnailUrl(asset.secureUrl)}
+                                    alt={describeAsset(asset, label)}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="aspect-square w-full object-cover"
                                 />
 
@@ -863,20 +986,15 @@ function ComparisonSlider({
                     className="absolute inset-0 h-full w-full object-cover"
                 />
 
-                <div
-                    className="absolute inset-y-0 left-0 overflow-hidden"
-                    style={{ width: `${position}%` }}
-                >
-                    <img
-                        src={before}
-                        alt="Before"
-                        className="h-full w-full object-cover"
-                        style={{
-                            width: "100vw",
-                            maxWidth: "none",
-                        }}
-                    />
-                </div>
+                {/* Same box as the image below it, clipped, so both line up at the divider. */}
+                <img
+                    src={before}
+                    alt="Before"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                        clipPath: `inset(0 ${100 - position}% 0 0)`,
+                    }}
+                />
 
                 <span className="absolute left-4 top-4 rounded-full bg-white/95 px-3 py-1.5 text-xs font-medium shadow-sm">
                     Before
@@ -971,6 +1089,15 @@ function formatDate(value: string) {
         month: "short",
         year: "numeric",
     }).format(date);
+}
+
+/* Thumbnails need distinct names; "Before" ten times tells a screen reader nothing. */
+function describeAsset(asset: Asset, phaseLabel: string) {
+    if (asset.aiCaption) return `${phaseLabel}: ${asset.aiCaption}`;
+
+    return asset.capturedAt
+        ? `${phaseLabel} photo, ${formatDate(asset.capturedAt)}`
+        : `${phaseLabel} photo`;
 }
 
 function formatMetricName(value: string) {

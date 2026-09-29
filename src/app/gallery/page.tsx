@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+    Suspense,
+    useEffect,
+    useId,
+    useMemo,
+    useRef,
+    useState,
+    type ReactNode,
+} from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
-type Project = {
-    id: string;
-    name: string;
-    description?: string | null;
-};
+import { apiFetch, errorMessage, isAbort, jsonRequest } from "@/lib/api";
+import { thumbnailUrl } from "@/lib/cloudinary-url";
+import { assetBelongsToLocation } from "@/lib/locations";
+import { useProjects } from "@/lib/use-projects";
 
 type Site = {
     id: string;
@@ -56,39 +65,93 @@ type SignedUpload = {
     uploadUrl: string;
 };
 
+type IngestResponse = {
+    summary: {
+        created: number;
+        updated: number;
+        failed: number;
+        flagged: number;
+    };
+    results: Array<{
+        publicId: string;
+        status: "created" | "updated" | "failed";
+        error?: string;
+    }>;
+};
+
+type UploadPhase = "before" | "during" | "after";
+
 const phaseOptions = [
-    "all",
-    "before",
-    "during",
-    "after",
-    "unknown",
+    { value: "all", label: "All phases" },
+    { value: "before", label: "Before" },
+    { value: "during", label: "During" },
+    { value: "after", label: "After" },
+    { value: "unknown", label: "Unknown" },
 ] as const;
 
-export default function GalleryPage() {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [selectedProject, setSelectedProject] = useState("");
+type PhaseFilter = (typeof phaseOptions)[number]["value"];
 
-    const [assets, setAssets] = useState<Asset[]>([]);
+/* The most the assets endpoint returns in one request. */
+const ASSET_LIMIT = 500;
+
+/* The most public IDs the ingest endpoint accepts in one request. */
+const MAX_UPLOAD_FILES = 200;
+
+export default function GalleryPage() {
+    return (
+        <Suspense fallback={null}>
+            <GalleryView />
+        </Suspense>
+    );
+}
+
+function GalleryView() {
+    const searchParams = useSearchParams();
+
+    const {
+        projects,
+        projectId: selectedProject,
+        setProjectId: setSelectedProject,
+        loading: loadingProjects,
+        error: projectsError,
+    } = useProjects();
+
     const [sites, setSites] = useState<Site[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
 
-    const [loadingProjects, setLoadingProjects] = useState(true);
-    const [loadingAssets, setLoadingAssets] = useState(false);
+    /*
+     * Assets are stored with the project they were loaded for, so a
+     * response that arrives after the project changed is never shown.
+     */
+    const [assetsResult, setAssetsResult] = useState<{
+        projectId: string;
+        assets: Asset[];
+        error: string;
+    } | null>(null);
+
+    const [reloadToken, setReloadToken] = useState(0);
+
     const [loadingLocations, setLoadingLocations] = useState(false);
 
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
 
-    const [phase, setPhase] =
-        useState<(typeof phaseOptions)[number]>("all");
+    const [phase, setPhase] = useState<PhaseFilter>("all");
 
     const [verification, setVerification] = useState("all");
 
-    const [selectedLocation, setSelectedLocation] = useState("");
+    /* A dashboard link can open the gallery on one location or one asset. */
+    const [selectedLocation, setSelectedLocation] = useState(
+        () => searchParams.get("locationId") ?? ""
+    );
     const [locationSearch, setLocationSearch] = useState("");
+    const [locationMenuOpen, setLocationMenuOpen] = useState(false);
 
-    const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+    const [selectedAssetId, setSelectedAssetId] = useState(
+        () => searchParams.get("asset") ?? ""
+    );
     const [assetDetails, setAssetDetails] = useState<Asset | null>(null);
-    const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
+    const [detailsPendingFor, setDetailsPendingFor] = useState("");
 
     const [deletingAsset, setDeletingAsset] = useState(false);
     const [deleteError, setDeleteError] = useState("");
@@ -100,12 +163,11 @@ export default function GalleryPage() {
      */
     const [uploadSite, setUploadSite] = useState("");
     const [uploadLocationId, setUploadLocationId] = useState("");
-    const [uploadPhase, setUploadPhase] = useState<
-        "before" | "during" | "after"
-    >("before");
+    const [uploadPhase, setUploadPhase] = useState<UploadPhase>("before");
 
     const [uploadLocationSearch, setUploadLocationSearch] = useState("");
     const [creatingLocation, setCreatingLocation] = useState(false);
+    const [savingLocation, setSavingLocation] = useState(false);
     const [newLocationName, setNewLocationName] = useState("");
 
     const [uploadFiles, setUploadFiles] = useState<File[]>([]);
@@ -113,90 +175,43 @@ export default function GalleryPage() {
     const [uploadProgress, setUploadProgress] = useState("");
     const [uploadError, setUploadError] = useState("");
 
-    /*
-     * Load projects
-     */
-    useEffect(() => {
-        let cancelled = false;
+    /* Files already on Cloudinary, so a retry does not upload them a second time. */
+    const uploadedPublicIds = useRef(new Map<File, string>());
 
-        async function loadProjects() {
-            try {
-                setLoadingProjects(true);
-                setError("");
-
-                const response = await fetch("/api/projects");
-
-                if (!response.ok) {
-                    throw new Error("Failed to load projects");
-                }
-
-                const result = await response.json();
-
-                if (!cancelled) {
-                    const data: Project[] = result.data ?? [];
-
-                    setProjects(data);
-
-                    if (data.length > 0) {
-                        setSelectedProject(data[0].id);
-                    }
-                }
-            } catch (err) {
-                if (!cancelled) {
-                    setError(
-                        err instanceof Error
-                            ? err.message
-                            : "Failed to load projects"
-                    );
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoadingProjects(false);
-                }
-            }
-        }
-
-        loadProjects();
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const projectSelectId = useId();
+    const locationInputId = useId();
+    const locationListId = useId();
+    const phaseSelectId = useId();
+    const verificationSelectId = useId();
 
     /*
      * Load project sites
      */
     useEffect(() => {
-        if (!selectedProject) {
-            setSites([]);
-            return;
-        }
+        if (!selectedProject) return;
 
         let cancelled = false;
 
         async function loadSites() {
             try {
-                const response = await fetch(
-                    `/api/projects/${selectedProject}`
+                const data = await apiFetch<{ sites?: Site[] }>(
+                    `/api/projects/${selectedProject}`,
+                    undefined,
+                    "Failed to load project details"
                 );
 
-                if (!response.ok) {
-                    throw new Error("Failed to load project details");
-                }
-
-                const result = await response.json();
-
                 if (!cancelled) {
-                    setSites(result.data?.sites ?? []);
+                    setSites(data?.sites ?? []);
                 }
             } catch (err) {
                 if (!cancelled) {
                     setSites([]);
 
                     setError(
-                        err instanceof Error
-                            ? err.message
-                            : "Failed to load project details"
+                        errorMessage(
+                            err,
+                            "Failed to load project details"
+                        )
                     );
                 }
             }
@@ -213,11 +228,7 @@ export default function GalleryPage() {
      * Load locations
      */
     useEffect(() => {
-        if (!selectedProject) {
-            setLocations([]);
-            setSelectedLocation("");
-            return;
-        }
+        if (!selectedProject) return;
 
         let cancelled = false;
 
@@ -225,27 +236,21 @@ export default function GalleryPage() {
             try {
                 setLoadingLocations(true);
 
-                const response = await fetch(
-                    `/api/locations?projectId=${selectedProject}`
+                const data = await apiFetch<Location[]>(
+                    `/api/locations?projectId=${selectedProject}`,
+                    undefined,
+                    "Failed to load locations"
                 );
 
-                if (!response.ok) {
-                    throw new Error("Failed to load locations");
-                }
-
-                const result = await response.json();
-
                 if (!cancelled) {
-                    setLocations(result.data ?? []);
+                    setLocations(data ?? []);
                 }
             } catch (err) {
                 if (!cancelled) {
                     setLocations([]);
 
                     setError(
-                        err instanceof Error
-                            ? err.message
-                            : "Failed to load locations"
+                        errorMessage(err, "Failed to load locations")
                     );
                 }
             } finally {
@@ -263,60 +268,79 @@ export default function GalleryPage() {
     }, [selectedProject]);
 
     /*
-     * Load assets
+     * Load assets.
+     *
+     * The whole project is loaded once and the phase, verification and
+     * location filters are applied here, so changing a filter is instant
+     * and the per-location counts describe the project, not the filter.
      */
-    async function refreshAssets() {
-        if (!selectedProject) {
-            setAssets([]);
-            return;
-        }
+    useEffect(() => {
+        if (!selectedProject) return;
 
-        try {
-            setLoadingAssets(true);
-            setError("");
+        const controller = new AbortController();
 
-            const params = new URLSearchParams({
-                projectId: selectedProject,
-                limit: "500",
+        const params = new URLSearchParams({
+            projectId: selectedProject,
+            limit: String(ASSET_LIMIT),
+        });
+
+        apiFetch<Asset[]>(
+            `/api/assets?${params.toString()}`,
+            { signal: controller.signal },
+            "Failed to load assets"
+        )
+            .then((data) => {
+                setAssetsResult({
+                    projectId: selectedProject,
+                    assets: data ?? [],
+                    error: "",
+                });
+            })
+            .catch((err) => {
+                if (controller.signal.aborted || isAbort(err)) return;
+
+                setAssetsResult({
+                    projectId: selectedProject,
+                    assets: [],
+                    error: errorMessage(err, "Failed to load assets"),
+                });
             });
 
-            if (phase !== "all") {
-                params.set("phase", phase);
-            }
+        return () => {
+            controller.abort();
+        };
+    }, [selectedProject, reloadToken]);
 
-            if (verification !== "all") {
-                params.set("verified", verification);
-            }
+    const loadedAssets =
+        assetsResult && assetsResult.projectId === selectedProject
+            ? assetsResult
+            : null;
 
-            const response = await fetch(
-                `/api/assets?${params.toString()}`
-            );
+    const assets = useMemo(
+        () => loadedAssets?.assets ?? [],
+        [loadedAssets]
+    );
 
-            if (!response.ok) {
-                throw new Error("Failed to load assets");
-            }
+    const assetsError = loadedAssets?.error ?? "";
 
-            const result = await response.json();
+    const loadingAssets =
+        loadingProjects || (Boolean(selectedProject) && !loadedAssets);
 
-            setAssets(result.data ?? []);
-        } catch (err) {
-            setAssets([]);
-
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to load assets"
-            );
-        } finally {
-            setLoadingAssets(false);
-        }
+    function refreshAssets() {
+        setReloadToken((token) => token + 1);
     }
 
-    useEffect(() => {
-        refreshAssets();
+    async function refreshLocations(projectId: string) {
+        try {
+            const data = await apiFetch<Location[]>(
+                `/api/locations?projectId=${projectId}`
+            );
 
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedProject, phase, verification]);
+            setLocations(data ?? []);
+        } catch {
+            /* The list already on screen is still usable. */
+        }
+    }
 
     /*
      * Visible locations
@@ -335,33 +359,42 @@ export default function GalleryPage() {
      * Visible assets
      */
     const visibleAssets = useMemo(() => {
-        if (!selectedLocation) {
-            return assets;
-        }
-
         const location = locations.find(
             (item) => item.id === selectedLocation
         );
 
         return assets.filter((asset) => {
-            if (asset.locationId === selectedLocation) {
-                return true;
+            if (phase !== "all" && asset.phase !== phase) {
+                return false;
             }
 
-            /*
-             * Legacy assets may not have locationId.
-             * Fall back to the location's site.
-             */
             if (
-                location?.siteId &&
-                asset.siteId === location.siteId
+                verification !== "all" &&
+                String(asset.verified) !== verification
             ) {
+                return false;
+            }
+
+            if (!selectedLocation) {
                 return true;
             }
 
-            return false;
+            return location
+                ? assetBelongsToLocation(asset, location)
+                : asset.locationId === selectedLocation;
         });
-    }, [assets, selectedLocation, locations]);
+    }, [assets, phase, verification, selectedLocation, locations]);
+
+    /*
+     * Assets that belong to no site, or to a site that is not loaded.
+     */
+    const unassignedAssets = useMemo(() => {
+        const known = new Set(sites.map((site) => site.id));
+
+        return visibleAssets.filter(
+            (asset) => !asset.siteId || !known.has(asset.siteId)
+        );
+    }, [visibleAssets, sites]);
 
     /*
      * Location asset counts
@@ -403,35 +436,62 @@ export default function GalleryPage() {
     );
 
     /*
+     * The open asset is looked up by id, so it always comes from the
+     * project on screen and closes by itself once it has been deleted.
+     * Details that arrive for an asset that is no longer open are ignored.
+     */
+    const selectedAsset = useMemo(
+        () =>
+            assets.find((asset) => asset.id === selectedAssetId) ?? null,
+        [assets, selectedAssetId]
+    );
+
+    const shownAsset =
+        assetDetails && assetDetails.id === selectedAssetId
+            ? assetDetails
+            : selectedAsset;
+
+    const loadingAssetDetails =
+        Boolean(selectedAsset) && detailsPendingFor === selectedAssetId;
+
+    /*
      * Open asset details
      */
     async function openAsset(asset: Asset) {
-        setSelectedAsset(asset);
-        setAssetDetails(null);
+        setSelectedAssetId(asset.id);
         setDeleteError("");
-        setLoadingAssetDetails(true);
+        setDetailsPendingFor(asset.id);
 
         try {
-            const response = await fetch(`/api/assets/${asset.id}`);
-
-            if (!response.ok) {
-                throw new Error("Failed to load asset details");
-            }
-
-            const result = await response.json();
-
-            setAssetDetails(result.data);
-        } catch (err) {
-            console.error(err);
+            setAssetDetails(
+                await apiFetch<Asset>(
+                    `/api/assets/${asset.id}`,
+                    undefined,
+                    "Failed to load asset details"
+                )
+            );
+        } catch {
+            /* The panel keeps showing what the list already returned. */
         } finally {
-            setLoadingAssetDetails(false);
+            setDetailsPendingFor((current) =>
+                current === asset.id ? "" : current
+            );
         }
+    }
+
+    function closeAsset() {
+        if (deletingAsset) return;
+
+        setSelectedAssetId("");
+        setDeleteError("");
     }
 
     /*
      * Reset upload modal
      */
     function resetUploadState() {
+        uploadedPublicIds.current.clear();
+
         setUploadSite("");
         setUploadLocationId("");
         setUploadPhase("before");
@@ -447,7 +507,7 @@ export default function GalleryPage() {
      * Create a location
      */
     async function createLocation() {
-        if (!selectedProject) return;
+        if (!selectedProject || savingLocation) return;
 
         const name = newLocationName.trim();
 
@@ -458,33 +518,19 @@ export default function GalleryPage() {
 
         try {
             setUploadError("");
-            setCreatingLocation(true);
+            setSavingLocation(true);
 
-            const response = await fetch("/api/locations", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            const location = await apiFetch<Location>(
+                "/api/locations",
+                jsonRequest("POST", {
                     projectId: selectedProject,
                     siteId: uploadSite || null,
                     name,
                     lat: null,
                     lng: null,
                 }),
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result?.error?.message ??
-                        result?.message ??
-                        "Failed to create location"
-                );
-            }
-
-            const location: Location = result.data;
+                "Failed to create location"
+            );
 
             setLocations((current) =>
                 [...current, location].sort((a, b) =>
@@ -497,13 +543,12 @@ export default function GalleryPage() {
             setNewLocationName("");
             setCreatingLocation(false);
         } catch (err) {
+            /* Keep the form open so the name is not lost. */
             setUploadError(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to create location"
+                errorMessage(err, "Failed to create location")
             );
-
-            setCreatingLocation(false);
+        } finally {
+            setSavingLocation(false);
         }
     }
 
@@ -518,9 +563,9 @@ export default function GalleryPage() {
 
         formData.append("file", file);
         formData.append("api_key", signed.apiKey);
-        formData.append("timestamp", String(signed.timestamp));
         formData.append("signature", signed.signature);
 
+        /* `params` is the signed set, timestamp included; send it unchanged. */
         for (const [key, value] of Object.entries(signed.params ?? {})) {
             formData.append(key, value);
         }
@@ -530,20 +575,17 @@ export default function GalleryPage() {
             body: formData,
         });
 
-        if (!response.ok) {
-            const body = await response.text();
+        const result = await response.json().catch(() => null);
 
+        if (!response.ok) {
             throw new Error(
-                body || `Cloudinary upload failed for ${file.name}`
+                result?.error?.message ??
+                    `Cloudinary rejected the upload (${response.status})`
             );
         }
 
-        const result = await response.json();
-
-        if (!result.public_id) {
-            throw new Error(
-                `Cloudinary did not return a public ID for ${file.name}`
-            );
+        if (!result?.public_id) {
+            throw new Error("Cloudinary did not return a public ID");
         }
 
         return result.public_id;
@@ -573,120 +615,140 @@ export default function GalleryPage() {
             return;
         }
 
+        if (uploadFiles.length > MAX_UPLOAD_FILES) {
+            setUploadError(
+                `Add at most ${MAX_UPLOAD_FILES} images at a time.`
+            );
+            return;
+        }
+
         try {
             setUploading(true);
             setUploadError("");
             setUploadProgress("Preparing upload...");
 
-            const signResponse = await fetch("/api/uploads/sign", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            const signed = await apiFetch<SignedUpload>(
+                "/api/uploads/sign",
+                jsonRequest("POST", {
                     projectId: selectedProject,
                     siteId: uploadSite,
                 }),
-            });
+                "Failed to prepare upload"
+            );
 
-            const signResult = await signResponse.json();
+            const uploaded = uploadedPublicIds.current;
+            const problems: string[] = [];
+            const failedFiles = new Set<File>();
 
-            if (!signResponse.ok) {
-                throw new Error(
-                    signResult?.error?.message ??
-                        signResult?.message ??
-                        "Failed to prepare upload"
-                );
-            }
-
-            const signed: SignedUpload = signResult.data;
-
-            const publicIds: string[] = [];
-
-            for (
-                let index = 0;
-                index < uploadFiles.length;
-                index += 1
-            ) {
-                const file = uploadFiles[index];
+            for (const [index, file] of uploadFiles.entries()) {
+                if (uploaded.has(file)) continue;
 
                 setUploadProgress(
                     `Uploading ${index + 1} of ${uploadFiles.length}: ${file.name}`
                 );
 
-                const publicId = await uploadToCloudinary(
-                    file,
-                    signed
-                );
+                try {
+                    uploaded.set(
+                        file,
+                        await uploadToCloudinary(file, signed)
+                    );
+                } catch (err) {
+                    /* One bad file must not strand the ones already uploaded. */
+                    failedFiles.add(file);
 
-                publicIds.push(publicId);
+                    problems.push(
+                        `${file.name}: ${errorMessage(err, "upload failed")}`
+                    );
+                }
             }
 
-            setUploadProgress(
-                "Analyzing and organizing evidence..."
+            const readyFiles = uploadFiles.filter((file) =>
+                uploaded.has(file)
             );
 
-            const ingestResponse = await fetch(
-                "/api/assets/ingest",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
+            let added = 0;
+
+            if (readyFiles.length > 0) {
+                setUploadProgress(
+                    "Analyzing and organizing evidence..."
+                );
+
+                const ingest = await apiFetch<IngestResponse>(
+                    "/api/assets/ingest",
+                    jsonRequest("POST", {
                         projectId: selectedProject,
-                        publicIds,
+                        publicIds: readyFiles.map(
+                            (file) => uploaded.get(file)!
+                        ),
                         siteId: uploadSite,
                         locationId: uploadLocationId,
                         phase: uploadPhase,
                         analyze: true,
                     }),
-                }
-            );
-
-            const ingestResult = await ingestResponse.json();
-
-            if (!ingestResponse.ok) {
-                throw new Error(
-                    ingestResult?.error?.message ??
-                        ingestResult?.message ??
-                        "Failed to ingest uploaded evidence"
+                    "Failed to ingest uploaded evidence"
                 );
+
+                added =
+                    ingest.summary.created + ingest.summary.updated;
+
+                /* The server answers 200 even when single items fail. */
+                for (const item of ingest.results) {
+                    const file = readyFiles.find(
+                        (candidate) =>
+                            uploaded.get(candidate) === item.publicId
+                    );
+
+                    if (!file) continue;
+
+                    if (item.status === "failed") {
+                        failedFiles.add(file);
+
+                        problems.push(
+                            `${file.name}: ${
+                                item.error ?? "could not be processed"
+                            }`
+                        );
+                    } else {
+                        uploaded.delete(file);
+                    }
+                }
+
+                if (added > 0) {
+                    refreshAssets();
+                    void refreshLocations(selectedProject);
+                }
             }
 
-            const summary = ingestResult.data?.summary;
+            const summary = `${added} evidence ${
+                added === 1 ? "item" : "items"
+            } added.`;
 
-            setUploadProgress(
-                `Complete — ${
-                    summary?.created ?? publicIds.length
-                } evidence ${
-                    summary?.created === 1 ? "item" : "items"
-                } added.`
-            );
+            if (problems.length > 0) {
+                /* Stay open with only the failed files, ready to retry. */
+                setUploadFiles(
+                    uploadFiles.filter((file) => failedFiles.has(file))
+                );
 
-            await refreshAssets();
+                setUploadProgress(added > 0 ? summary : "");
 
-            const locationResponse = await fetch(
-                `/api/locations?projectId=${selectedProject}`
-            );
+                setUploadError(
+                    [
+                        `${problems.length} ${
+                            problems.length === 1 ? "image" : "images"
+                        } could not be added:`,
+                        ...problems,
+                    ].join("\n")
+                );
 
-            if (locationResponse.ok) {
-                const locationResult =
-                    await locationResponse.json();
-
-                setLocations(locationResult.data ?? []);
+                return;
             }
 
-            window.setTimeout(() => {
-                setShowUpload(false);
-                resetUploadState();
-            }, 1000);
+            setNotice(summary);
+            setShowUpload(false);
+            resetUploadState();
         } catch (err) {
-            setUploadError(
-                err instanceof Error
-                    ? err.message
-                    : "Upload failed"
-            );
+            setUploadError(errorMessage(err, "Upload failed"));
+            setUploadProgress("");
         } finally {
             setUploading(false);
         }
@@ -696,7 +758,7 @@ export default function GalleryPage() {
      * Delete evidence
      */
     async function handleDeleteAsset() {
-        if (!selectedAsset) return;
+        if (!selectedAsset || deletingAsset) return;
 
         const confirmed = window.confirm(
             "Delete this evidence? This action cannot be undone."
@@ -710,34 +772,18 @@ export default function GalleryPage() {
             setDeletingAsset(true);
             setDeleteError("");
 
-            const response = await fetch(
+            await apiFetch(
                 `/api/assets/${selectedAsset.id}`,
-                {
-                    method: "DELETE",
-                }
+                { method: "DELETE" },
+                "Failed to delete evidence"
             );
 
-            const result = await response
-                .json()
-                .catch(() => null);
-
-            if (!response.ok) {
-                throw new Error(
-                    result?.error?.message ??
-                        result?.message ??
-                        "Failed to delete evidence"
-                );
-            }
-
-            setSelectedAsset(null);
-            setAssetDetails(null);
-
-            await refreshAssets();
+            setSelectedAssetId("");
+            setNotice("Evidence deleted.");
+            refreshAssets();
         } catch (err) {
             setDeleteError(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to delete evidence"
+                errorMessage(err, "Failed to delete evidence")
             );
         } finally {
             setDeletingAsset(false);
@@ -751,6 +797,20 @@ export default function GalleryPage() {
                 <div className="mx-auto max-w-7xl px-6 py-10">
                     <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
                         <div className="max-w-2xl">
+                            <Link
+                                href={
+                                    selectedProject
+                                        ? `/project/${selectedProject}`
+                                        : "/"
+                                }
+                                className="mb-6 inline-block text-sm text-muted-foreground transition hover:text-foreground"
+                            >
+                                ←{" "}
+                                {selectedProject
+                                    ? "Project dashboard"
+                                    : "Projects"}
+                            </Link>
+
                             <div className="mb-3 flex items-center gap-2">
                                 <span className="h-2 w-2 rounded-full bg-foreground" />
 
@@ -772,19 +832,30 @@ export default function GalleryPage() {
 
                         <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
                             <div className="w-full sm:w-80">
-                                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                <label
+                                    htmlFor={projectSelectId}
+                                    className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                                >
                                     Active project
                                 </label>
 
                                 <select
+                                    id={projectSelectId}
                                     value={selectedProject}
                                     onChange={(event) => {
                                         setSelectedProject(
                                             event.target.value
                                         );
 
+                                        /* Nothing from the previous project may linger. */
+                                        setSites([]);
+                                        setLocations([]);
                                         setSelectedLocation("");
                                         setLocationSearch("");
+                                        setLocationMenuOpen(false);
+                                        setSelectedAssetId("");
+                                        setError("");
+                                        setNotice("");
                                     }}
                                     disabled={
                                         loadingProjects ||
@@ -817,9 +888,11 @@ export default function GalleryPage() {
                                 type="button"
                                 onClick={() => {
                                     resetUploadState();
+                                    setNotice("");
                                     setShowUpload(true);
                                 }}
-                                className="h-11 self-end rounded-lg bg-foreground px-5 text-sm font-medium text-background transition hover:opacity-90"
+                                disabled={!selectedProject}
+                                className="h-11 self-end rounded-lg bg-foreground px-5 text-sm font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 + Add evidence
                             </button>
@@ -832,38 +905,67 @@ export default function GalleryPage() {
             <section className="border-b bg-background">
                 <div className="mx-auto max-w-7xl px-6 py-4">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-                        <div className="relative min-w-0 flex-1 xl:max-w-xl">
-                            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <div
+                            className="relative min-w-0 flex-1 xl:max-w-xl"
+                            onBlur={(event) => {
+                                if (
+                                    !event.currentTarget.contains(
+                                        event.relatedTarget
+                                    )
+                                ) {
+                                    setLocationMenuOpen(false);
+                                }
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                    setLocationMenuOpen(false);
+                                }
+                            }}
+                        >
+                            <label
+                                htmlFor={locationInputId}
+                                className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Field location
                             </label>
 
                             <div className="relative">
                                 <input
-                                    value={locationSearch}
+                                    id={locationInputId}
+                                    role="combobox"
+                                    aria-expanded={locationMenuOpen}
+                                    aria-controls={locationListId}
+                                    aria-autocomplete="list"
+                                    autoComplete="off"
+                                    value={
+                                        locationMenuOpen
+                                            ? locationSearch
+                                            : (selectedLocationData?.name ??
+                                              "")
+                                    }
                                     onChange={(event) => {
                                         setLocationSearch(
                                             event.target.value
                                         );
+
+                                        setLocationMenuOpen(true);
                                     }}
                                     onFocus={() => {
-                                        if (
-                                            selectedLocationData
-                                        ) {
-                                            setLocationSearch(
-                                                selectedLocationData.name
-                                            );
-                                        }
+                                        /* Start empty so every location can be browsed. */
+                                        setLocationSearch("");
+                                        setLocationMenuOpen(true);
                                     }}
                                     placeholder="Search or select a field location..."
                                     className="h-11 w-full rounded-lg border bg-background px-3.5 pr-20 text-sm outline-none focus:ring-2 focus:ring-ring"
                                 />
 
-                                {locationSearch && (
+                                {(selectedLocation || locationSearch) && (
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setLocationSearch("");
                                             setSelectedLocation("");
+                                            setLocationMenuOpen(false);
                                         }}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground"
                                     >
@@ -872,8 +974,13 @@ export default function GalleryPage() {
                                 )}
                             </div>
 
-                            {locationSearch && (
-                                <div className="absolute left-0 right-0 top-[4.7rem] z-30 max-h-80 overflow-y-auto rounded-xl border bg-background p-1 shadow-xl">
+                            {locationMenuOpen && (
+                                <div
+                                    id={locationListId}
+                                    role="listbox"
+                                    aria-label="Field locations"
+                                    className="absolute left-0 right-0 top-[4.7rem] z-30 max-h-80 overflow-y-auto rounded-xl border bg-background p-1 shadow-xl"
+                                >
                                     {loadingLocations ? (
                                         <div className="px-3 py-4 text-sm text-muted-foreground">
                                             Loading locations...
@@ -910,13 +1017,28 @@ export default function GalleryPage() {
                                                             location.id
                                                         }
                                                         type="button"
+                                                        role="option"
+                                                        aria-selected={
+                                                            selectedLocation ===
+                                                            location.id
+                                                        }
+                                                        onMouseDown={(
+                                                            event
+                                                        ) => {
+                                                            /* Keep focus in the field so the list is still there for the click. */
+                                                            event.preventDefault();
+                                                        }}
                                                         onClick={() => {
                                                             setSelectedLocation(
                                                                 location.id
                                                             );
 
                                                             setLocationSearch(
-                                                                location.name
+                                                                ""
+                                                            );
+
+                                                            setLocationMenuOpen(
+                                                                false
                                                             );
                                                         }}
                                                         className={`w-full rounded-lg px-3 py-3 text-left transition hover:bg-muted ${
@@ -972,49 +1094,45 @@ export default function GalleryPage() {
 
                         {/* Phase filter */}
                         <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <label
+                                htmlFor={phaseSelectId}
+                                className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Phase
-                            </span>
+                            </label>
 
                             <select
+                                id={phaseSelectId}
                                 value={phase}
                                 onChange={(event) =>
                                     setPhase(
-                                        event.target
-                                            .value as (typeof phaseOptions)[number]
+                                        event.target.value as PhaseFilter
                                     )
                                 }
                                 className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                             >
-                                <option value="all">
-                                    All phases
-                                </option>
-
-                                <option value="before">
-                                    Before
-                                </option>
-
-                                <option value="during">
-                                    During
-                                </option>
-
-                                <option value="after">
-                                    After
-                                </option>
-
-                                <option value="unknown">
-                                    Unknown
-                                </option>
+                                {phaseOptions.map((option) => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
                         {/* Verification */}
                         <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <label
+                                htmlFor={verificationSelectId}
+                                className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Verification
-                            </span>
+                            </label>
 
                             <select
+                                id={verificationSelectId}
                                 value={verification}
                                 onChange={(event) =>
                                     setVerification(
@@ -1100,14 +1218,41 @@ export default function GalleryPage() {
 
             {/* Content */}
             <section className="mx-auto max-w-7xl px-6 py-8">
-                {error && (
-                    <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                        {error}
+                {[projectsError, error, assetsError]
+                    .filter(Boolean)
+                    .map((message) => (
+                        <div
+                            key={message}
+                            role="alert"
+                            className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+                        >
+                            {message}
+                        </div>
+                    ))}
+
+                {notice && (
+                    <div
+                        role="status"
+                        className="mb-6 rounded-lg border bg-muted/30 p-4 text-sm"
+                    >
+                        {notice}
+                    </div>
+                )}
+
+                {assets.length >= ASSET_LIMIT && (
+                    <div className="mb-6 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                        Showing the {ASSET_LIMIT} most recent assets.
+                        Older evidence in this project is not listed
+                        here.
                     </div>
                 )}
 
                 {loadingAssets ? (
-                    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                    <div
+                        aria-busy="true"
+                        aria-label="Loading evidence"
+                        className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4"
+                    >
                         {Array.from({ length: 8 }).map(
                             (_, index) => (
                                 <div
@@ -1117,6 +1262,18 @@ export default function GalleryPage() {
                             )
                         )}
                     </div>
+                ) : !selectedProject ? (
+                    <div className="rounded-xl border border-dashed p-12 text-center">
+                        <h2 className="text-lg font-medium">
+                            No projects yet
+                        </h2>
+
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            Evidence is organised by project. Create a
+                            project first, then add field evidence to
+                            it.
+                        </p>
+                    </div>
                 ) : visibleAssets.length === 0 ? (
                     <div className="rounded-xl border border-dashed p-12 text-center">
                         <h2 className="text-lg font-medium">
@@ -1124,8 +1281,9 @@ export default function GalleryPage() {
                         </h2>
 
                         <p className="mt-2 text-sm text-muted-foreground">
-                            Try changing the project, location,
-                            phase, or verification filters.
+                            {assets.length === 0
+                                ? "This project has no evidence yet. Use Add evidence to upload field photos."
+                                : "Try changing the location, phase, or verification filters."}
                         </p>
                     </div>
                 ) : selectedLocation ? (
@@ -1136,92 +1294,43 @@ export default function GalleryPage() {
                     />
                 ) : (
                     <div className="space-y-12">
-                        {sites.map((site) => {
-                            const siteAssets =
-                                visibleAssets.filter(
-                                    (asset) =>
-                                        asset.siteId === site.id
-                                );
+                        {sites.map((site) => (
+                            <AssetGroup
+                                key={site.id}
+                                title={site.name}
+                                description={site.description}
+                                assets={visibleAssets.filter(
+                                    (asset) => asset.siteId === site.id
+                                )}
+                                locations={locations}
+                                onOpenAsset={openAsset}
+                            />
+                        ))}
 
-                            if (siteAssets.length === 0) {
-                                return null;
-                            }
-
-                            return (
-                                <section key={site.id}>
-                                    <div className="mb-5 flex items-end justify-between">
-                                        <div>
-                                            <h2 className="text-xl font-semibold tracking-tight">
-                                                {site.name}
-                                            </h2>
-
-                                            {site.description && (
-                                                <p className="mt-1 text-sm text-muted-foreground">
-                                                    {
-                                                        site.description
-                                                    }
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <span className="text-sm text-muted-foreground">
-                                            {siteAssets.length}{" "}
-                                            {siteAssets.length ===
-                                            1
-                                                ? "asset"
-                                                : "assets"}
-                                        </span>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                                        {siteAssets.map(
-                                            (asset) => (
-                                                <AssetCard
-                                                    key={asset.id}
-                                                    asset={asset}
-                                                    locationName={getLocationName(
-                                                        asset.locationId,
-                                                        locations
-                                                    )}
-                                                    onClick={() =>
-                                                        openAsset(
-                                                            asset
-                                                        )
-                                                    }
-                                                />
-                                            )
-                                        )}
-                                    </div>
-                                </section>
-                            );
-                        })}
+                        <AssetGroup
+                            title="Not assigned to a site"
+                            description="Evidence with no GPS match. Open an item to review it."
+                            assets={unassignedAssets}
+                            locations={locations}
+                            onOpenAsset={openAsset}
+                        />
                     </div>
                 )}
             </section>
 
             {/* Asset details */}
-            {selectedAsset && (
+            {shownAsset && (
                 <AssetDetails
-                    asset={
-                        assetDetails ??
-                        selectedAsset
-                    }
+                    asset={shownAsset}
                     locationName={getLocationName(
-                        (
-                            assetDetails ??
-                            selectedAsset
-                        ).locationId,
+                        shownAsset.locationId,
                         locations
                     )}
                     loading={loadingAssetDetails}
                     deleting={deletingAsset}
                     deleteError={deleteError}
                     onDelete={handleDeleteAsset}
-                    onClose={() => {
-                        setSelectedAsset(null);
-                        setAssetDetails(null);
-                        setDeleteError("");
-                    }}
+                    onClose={closeAsset}
                 />
             )}
 
@@ -1252,6 +1361,7 @@ export default function GalleryPage() {
                     setCreatingLocation={
                         setCreatingLocation
                     }
+                    savingLocation={savingLocation}
                     newLocationName={
                         newLocationName
                     }
@@ -1266,7 +1376,7 @@ export default function GalleryPage() {
                     onCreateLocation={createLocation}
                     onUpload={handleUpload}
                     onClose={() => {
-                        if (!uploading) {
+                        if (!uploading && !savingLocation) {
                             setShowUpload(false);
                             resetUploadState();
                         }
@@ -1274,6 +1384,64 @@ export default function GalleryPage() {
                 />
             )}
         </main>
+    );
+}
+
+/*
+ * A titled grid of evidence: one site, or the unassigned remainder
+ */
+function AssetGroup({
+    title,
+    description,
+    assets,
+    locations,
+    onOpenAsset,
+}: {
+    title: string;
+    description?: string | null;
+    assets: Asset[];
+    locations: Location[];
+    onOpenAsset: (asset: Asset) => void;
+}) {
+    if (assets.length === 0) {
+        return null;
+    }
+
+    return (
+        <section>
+            <div className="mb-5 flex items-end justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold tracking-tight">
+                        {title}
+                    </h2>
+
+                    {description && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {description}
+                        </p>
+                    )}
+                </div>
+
+                <span className="text-sm text-muted-foreground">
+                    {assets.length}{" "}
+                    {assets.length === 1 ? "asset" : "assets"}
+                </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {assets.map((asset) => (
+                    <AssetCard
+                        key={asset.id}
+                        asset={asset}
+                        locationName={getLocationName(
+                            asset.locationId,
+                            locations
+                        )}
+                        onClick={() => onOpenAsset(asset)}
+                    />
+                ))}
+            </div>
+        </section>
     );
 }
 
@@ -1391,12 +1559,12 @@ function AssetCard({
             className="group overflow-hidden rounded-xl border bg-card text-left transition hover:-translate-y-0.5 hover:shadow-md"
         >
             <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+                {/* The caption is printed below, so the image itself is decorative. */}
                 <img
-                    src={asset.secureUrl}
-                    alt={
-                        asset.aiCaption ||
-                        "Field evidence"
-                    }
+                    src={thumbnailUrl(asset.secureUrl)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                 />
 
@@ -1434,9 +1602,7 @@ function AssetCard({
                 <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span>
                         {asset.capturedAt
-                            ? new Date(
-                                  asset.capturedAt
-                              ).toLocaleDateString()
+                            ? formatDate(asset.capturedAt)
                             : "Date unavailable"}
                     </span>
 
@@ -1492,6 +1658,7 @@ function UploadModal({
     setLocationSearch,
     creatingLocation,
     setCreatingLocation,
+    savingLocation,
     newLocationName,
     setNewLocationName,
     files,
@@ -1513,15 +1680,9 @@ function UploadModal({
     setSelectedLocationId: (
         value: string
     ) => void;
-    uploadPhase:
-        | "before"
-        | "during"
-        | "after";
+    uploadPhase: UploadPhase;
     setUploadPhase: (
-        value:
-            | "before"
-            | "during"
-            | "after"
+        value: UploadPhase
     ) => void;
     locationSearch: string;
     setLocationSearch: (
@@ -1531,6 +1692,7 @@ function UploadModal({
     setCreatingLocation: (
         value: boolean
     ) => void;
+    savingLocation: boolean;
     newLocationName: string;
     setNewLocationName: (
         value: string
@@ -1546,6 +1708,17 @@ function UploadModal({
     onUpload: () => void;
     onClose: () => void;
 }) {
+    const titleId = useId();
+    const siteSelectId = useId();
+    const locationInputId = useId();
+    const newLocationInputId = useId();
+    const phaseSelectId = useId();
+    const filesLabelId = useId();
+
+    const busy = uploading || savingLocation;
+
+    useEscapeKey(onClose);
+
     const visibleLocations =
         locations.filter((location) => {
             if (
@@ -1574,6 +1747,9 @@ function UploadModal({
             onClick={onClose}
         >
             <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
                 className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border bg-background shadow-2xl"
                 onClick={(event) =>
                     event.stopPropagation()
@@ -1585,7 +1761,10 @@ function UploadModal({
                             Evidence ingest
                         </p>
 
-                        <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                        <h2
+                            id={titleId}
+                            className="mt-1 text-xl font-semibold tracking-tight"
+                        >
                             Add field evidence
                         </h2>
 
@@ -1598,7 +1777,8 @@ function UploadModal({
                     <button
                         type="button"
                         onClick={onClose}
-                        disabled={uploading}
+                        disabled={busy}
+                        autoFocus
                         className="rounded-lg border px-3 py-1.5 text-sm transition hover:bg-muted disabled:opacity-50"
                     >
                         Close
@@ -1608,11 +1788,15 @@ function UploadModal({
                 <div className="space-y-6 p-6">
                     {/* Site */}
                     <section>
-                        <label className="mb-2 block text-sm font-medium">
+                        <label
+                            htmlFor={siteSelectId}
+                            className="mb-2 block text-sm font-medium"
+                        >
                             Field site
                         </label>
 
                         <select
+                            id={siteSelectId}
                             value={selectedSite}
                             onChange={(event) => {
                                 setSelectedSite(
@@ -1645,7 +1829,14 @@ function UploadModal({
 
                     {/* Location */}
                     <section>
-                        <label className="mb-2 block text-sm font-medium">
+                        <label
+                            htmlFor={
+                                creatingLocation
+                                    ? newLocationInputId
+                                    : locationInputId
+                            }
+                            className="mb-2 block text-sm font-medium"
+                        >
                             Field location
                         </label>
 
@@ -1653,6 +1844,8 @@ function UploadModal({
                             <>
                                 <div className="relative">
                                     <input
+                                        id={locationInputId}
+                                        autoComplete="off"
                                         value={
                                             locationSearch
                                         }
@@ -1682,7 +1875,7 @@ function UploadModal({
 
                                     {selectedSite &&
                                         !selectedLocationId && (
-                                            <div className="absolute left-0 right-0 top-12 z-20 max-h-56 overflow-y-auto rounded-lg border bg-background p-1 shadow-xl">
+                                            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border bg-background p-1">
                                                 {visibleLocations.length >
                                                 0 ? (
                                                     visibleLocations.map(
@@ -1796,9 +1989,17 @@ function UploadModal({
                                 </p>
 
                                 <input
+                                    id={newLocationInputId}
+                                    autoFocus
+                                    maxLength={200}
                                     value={
                                         newLocationName
                                     }
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            onCreateLocation();
+                                        }
+                                    }}
                                     onChange={(event) =>
                                         setNewLocationName(
                                             event.target
@@ -1817,12 +2018,14 @@ function UploadModal({
                                             onCreateLocation
                                         }
                                         disabled={
-                                            uploading ||
+                                            busy ||
                                             !newLocationName.trim()
                                         }
                                         className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
                                     >
-                                        Create location
+                                        {savingLocation
+                                            ? "Creating..."
+                                            : "Create location"}
                                     </button>
 
                                     <button
@@ -1836,10 +2039,8 @@ function UploadModal({
                                                 ""
                                             );
                                         }}
-                                        disabled={
-                                            uploading
-                                        }
-                                        className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
+                                        disabled={busy}
+                                        className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
                                     >
                                         Cancel
                                     </button>
@@ -1850,19 +2051,19 @@ function UploadModal({
 
                     {/* Evidence phase */}
                     <section>
-                        <label className="mb-2 block text-sm font-medium">
+                        <label
+                            htmlFor={phaseSelectId}
+                            className="mb-2 block text-sm font-medium"
+                        >
                             Evidence phase
                         </label>
 
                         <select
+                            id={phaseSelectId}
                             value={uploadPhase}
                             onChange={(event) =>
                                 setUploadPhase(
-                                    event.target
-                                        .value as
-                                        | "before"
-                                        | "during"
-                                        | "after"
+                                    event.target.value as UploadPhase
                                 )
                             }
                             disabled={uploading}
@@ -1889,17 +2090,22 @@ function UploadModal({
 
                     {/* Files */}
                     <section>
-                        <label className="mb-2 block text-sm font-medium">
+                        <p
+                            id={filesLabelId}
+                            className="mb-2 block text-sm font-medium"
+                        >
                             Evidence images
-                        </label>
+                        </p>
 
-                        <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition hover:bg-muted/30">
+                        {/* sr-only, not hidden: the picker must stay reachable by keyboard. */}
+                        <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition focus-within:ring-2 focus-within:ring-ring hover:bg-muted/30">
                             <input
                                 type="file"
                                 accept="image/*"
                                 multiple
                                 disabled={uploading}
-                                className="hidden"
+                                aria-labelledby={filesLabelId}
+                                className="sr-only"
                                 onChange={(event) => {
                                     setFiles(
                                         Array.from(
@@ -1916,7 +2122,8 @@ function UploadModal({
 
                             <span className="mt-1 text-xs text-muted-foreground">
                                 JPG, PNG, WebP and other
-                                supported image formats
+                                supported image formats, up to{" "}
+                                {MAX_UPLOAD_FILES} at a time
                             </span>
                         </label>
 
@@ -1930,11 +2137,23 @@ function UploadModal({
                                     selected
                                 </p>
 
+                                {files.length > MAX_UPLOAD_FILES && (
+                                    <p
+                                        role="alert"
+                                        className="mt-1 text-xs text-destructive"
+                                    >
+                                        That is more than{" "}
+                                        {MAX_UPLOAD_FILES}. Choose fewer
+                                        images and add the rest in a
+                                        second batch.
+                                    </p>
+                                )}
+
                                 <div className="mt-2 max-h-28 space-y-1 overflow-y-auto">
                                     {files.map(
                                         (file) => (
                                             <p
-                                                key={`${file.name}-${file.size}`}
+                                                key={`${file.name}-${file.size}-${file.lastModified}`}
                                                 className="truncate text-xs text-muted-foreground"
                                             >
                                                 {
@@ -1950,14 +2169,20 @@ function UploadModal({
 
                     {/* Error */}
                     {error && (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                        <div
+                            role="alert"
+                            className="whitespace-pre-line break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                        >
                             {error}
                         </div>
                     )}
 
                     {/* Progress */}
                     {progress && (
-                        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                        <div
+                            role="status"
+                            className="rounded-lg border bg-muted/30 p-3 text-sm"
+                        >
                             {progress}
                         </div>
                     )}
@@ -1967,7 +2192,7 @@ function UploadModal({
                         <button
                             type="button"
                             onClick={onClose}
-                            disabled={uploading}
+                            disabled={busy}
                             className="rounded-lg border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
                         >
                             Cancel
@@ -1977,10 +2202,11 @@ function UploadModal({
                             type="button"
                             onClick={onUpload}
                             disabled={
-                                uploading ||
+                                busy ||
                                 !selectedSite ||
                                 !selectedLocationId ||
-                                files.length === 0
+                                files.length === 0 ||
+                                files.length > MAX_UPLOAD_FILES
                             }
                             className="rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-background disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -2020,6 +2246,9 @@ function AssetDetails({
     onClose: () => void;
 }) {
     const exif = asset.exif ?? {};
+    const titleId = useId();
+
+    useEscapeKey(onClose);
 
     return (
         <div
@@ -2027,6 +2256,9 @@ function AssetDetails({
             onClick={onClose}
         >
             <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
                 className="mx-auto max-w-5xl overflow-hidden rounded-2xl border bg-background shadow-2xl"
                 onClick={(event) =>
                     event.stopPropagation()
@@ -2038,7 +2270,10 @@ function AssetDetails({
                             Evidence details
                         </p>
 
-                        <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                        <h2
+                            id={titleId}
+                            className="mt-1 text-xl font-semibold tracking-tight"
+                        >
                             Asset provenance
                         </h2>
 
@@ -2052,6 +2287,7 @@ function AssetDetails({
                         type="button"
                         onClick={onClose}
                         disabled={deleting}
+                        autoFocus
                         className="rounded-lg border px-3 py-1.5 text-sm transition hover:bg-muted disabled:opacity-50"
                     >
                         Close
@@ -2072,7 +2308,10 @@ function AssetDetails({
 
                     <div className="space-y-7 p-6">
                         {loading && (
-                            <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                            <div
+                                role="status"
+                                className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground"
+                            >
                                 Loading latest asset
                                 metadata...
                             </div>
@@ -2314,7 +2553,10 @@ function AssetDetails({
                             </p>
 
                             {deleteError && (
-                                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                                <div
+                                    role="alert"
+                                    className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                                >
                                     {deleteError}
                                 </div>
                             )}
@@ -2397,13 +2639,35 @@ function capitalize(value: string) {
 }
 
 function formatDate(value: string) {
-    try {
-        return new Intl.DateTimeFormat("en-IN", {
-            dateStyle: "medium",
-        }).format(new Date(value));
-    } catch {
+    const date = new Date(value);
+
+    /* An invalid date does not throw on construction, only when formatted. */
+    if (Number.isNaN(date.getTime())) {
         return value;
     }
+
+    return new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+    }).format(date);
+}
+
+/*
+ * Closes a dialog on Escape for as long as the dialog is mounted
+ */
+function useEscapeKey(onEscape: () => void) {
+    useEffect(() => {
+        function onKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") {
+                onEscape();
+            }
+        }
+
+        window.addEventListener("keydown", onKeyDown);
+
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+        };
+    }, [onEscape]);
 }
 
 function formatMetadataValue(value: unknown) {

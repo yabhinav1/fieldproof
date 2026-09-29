@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useId, useState } from "react";
+import Link from "next/link";
 
-type Project = {
-    id: string;
-    name: string;
-};
+import { apiFetch, errorMessage } from "@/lib/api";
+import { thumbnailUrl } from "@/lib/cloudinary-url";
+import { useProjects } from "@/lib/use-projects";
 
 type Site = {
     id: string;
@@ -53,11 +53,25 @@ const phaseOptions = [
 ];
 
 export default function SearchPage() {
-    const [projects, setProjects] = useState<Project[]>([]);
+    return (
+        <Suspense fallback={null}>
+            <SearchView />
+        </Suspense>
+    );
+}
+
+function SearchView() {
+    const {
+        projects,
+        projectId,
+        setProjectId,
+        loading: loadingProjects,
+        error: projectsError,
+    } = useProjects();
+
     const [sites, setSites] = useState<Site[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
 
-    const [projectId, setProjectId] = useState("");
     const [siteId, setSiteId] = useState("");
     const [locationId, setLocationId] = useState("");
     const [phase, setPhase] = useState("");
@@ -66,99 +80,88 @@ export default function SearchPage() {
 
     const [results, setResults] = useState<SearchHit[]>([]);
     const [mode, setMode] = useState("");
+
+    /* The query the results on screen belong to; empty until a search has run. */
+    const [searchedFor, setSearchedFor] = useState("");
+
     const [loading, setLoading] = useState(false);
-    const [loadingProjects, setLoadingProjects] = useState(true);
     const [error, setError] = useState("");
 
-    useEffect(() => {
-        async function loadProjects() {
-            try {
-                setLoadingProjects(true);
-
-                const response = await fetch("/api/projects");
-
-                if (!response.ok) {
-                    throw new Error("Failed to load projects");
-                }
-
-                const result = await response.json();
-                const data: Project[] = result.data ?? [];
-
-                setProjects(data);
-
-                if (data.length > 0) {
-                    setProjectId(data[0].id);
-                }
-            } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load projects"
-                );
-            } finally {
-                setLoadingProjects(false);
-            }
-        }
-
-        loadProjects();
-    }, []);
+    const queryInputId = useId();
 
     useEffect(() => {
-        if (!projectId) {
-            setSites([]);
-            setLocations([]);
-            return;
-        }
+        if (!projectId) return;
+
+        let cancelled = false;
 
         async function loadProjectFilters() {
             try {
-                setError("");
+                const [project, locationList] = await Promise.all([
+                    apiFetch<{ sites?: Site[] }>(
+                        `/api/projects/${encodeURIComponent(projectId)}`,
+                        undefined,
+                        "Failed to load sites"
+                    ),
+                    apiFetch<Location[]>(
+                        `/api/locations?projectId=${encodeURIComponent(
+                            projectId
+                        )}`,
+                        undefined,
+                        "Failed to load field locations"
+                    ),
+                ]);
 
-                const [projectResponse, locationsResponse] =
-                    await Promise.all([
-                        fetch(`/api/projects/${projectId}`),
-                        fetch(
-                            `/api/locations?projectId=${encodeURIComponent(
-                                projectId
-                            )}`
-                        ),
-                    ]);
+                if (cancelled) return;
 
-                if (!projectResponse.ok) {
-                    throw new Error("Failed to load sites");
-                }
-
-                if (!locationsResponse.ok) {
-                    throw new Error("Failed to load field locations");
-                }
-
-                const projectResult = await projectResponse.json();
-                const locationsResult = await locationsResponse.json();
-
-                setSites(projectResult.data?.sites ?? []);
-                setLocations(locationsResult.data ?? []);
+                setSites(project?.sites ?? []);
+                setLocations(locationList ?? []);
             } catch (err) {
+                if (cancelled) return;
+
                 setSites([]);
                 setLocations([]);
 
                 setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load project filters"
+                    errorMessage(err, "Failed to load project filters")
                 );
             }
         }
 
         loadProjectFilters();
 
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
+
+    /* Nothing from the previous project may linger under the new one. */
+    function changeProject(id: string) {
+        setProjectId(id);
+
+        setSites([]);
+        setLocations([]);
         setSiteId("");
         setLocationId("");
-    }, [projectId]);
+
+        setResults([]);
+        setMode("");
+        setSearchedFor("");
+        setError("");
+    }
+
+    /* A location belongs to one site, so the two filters must agree. */
+    const siteLocations = locations.filter(
+        (location) => !siteId || location.siteId === siteId
+    );
+
+    const topScore = results[0]?.score ?? 0;
 
     async function handleSearch(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (!query.trim() || !projectId) {
+        const text = query.trim();
+
+        if (!text || !projectId || loading) {
             return;
         }
 
@@ -167,13 +170,17 @@ export default function SearchPage() {
             setError("");
 
             const params = new URLSearchParams({
-                q: query.trim(),
+                q: text,
                 projectId,
                 limit: "30",
             });
 
             if (siteId) {
                 params.set("siteId", siteId);
+            }
+
+            if (locationId) {
+                params.set("locationId", locationId);
             }
 
             if (phase) {
@@ -184,53 +191,21 @@ export default function SearchPage() {
                 params.set("verifiedOnly", "true");
             }
 
-            const response = await fetch(
-                `/api/search?${params.toString()}`
+            const data = await apiFetch<SearchResponse>(
+                `/api/search?${params.toString()}`,
+                undefined,
+                "Search failed"
             );
 
-            if (!response.ok) {
-                throw new Error("Search failed");
-            }
-
-            const result = await response.json();
-            const data: SearchResponse = result.data;
-
-            const hits = data?.hits ?? [];
-
-            const filteredHits = locationId
-                ? hits.filter((hit) => {
-                      if (
-                          hit.asset.locationId === locationId
-                      ) {
-                          return true;
-                      }
-
-                      // Legacy demo assets may not have locationId.
-                      // Fall back to the location's site.
-                      const selectedLocation = locations.find(
-                          (location) =>
-                              location.id === locationId
-                      );
-
-                      return Boolean(
-                          selectedLocation?.siteId &&
-                              hit.asset.siteId ===
-                                  selectedLocation.siteId
-                      );
-                  })
-                : hits;
-
-            setResults(filteredHits);
+            setResults(data?.hits ?? []);
             setMode(data?.mode ?? "");
+            setSearchedFor(text);
         } catch (err) {
             setResults([]);
             setMode("");
+            setSearchedFor("");
 
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Search failed"
-            );
+            setError(errorMessage(err, "Search failed"));
         } finally {
             setLoading(false);
         }
@@ -240,6 +215,13 @@ export default function SearchPage() {
         <main className="min-h-screen bg-background">
             <section className="mx-auto max-w-7xl px-6 py-14">
                 <div className="max-w-3xl">
+                    <Link
+                        href={projectId ? `/project/${projectId}` : "/"}
+                        className="mb-8 inline-block text-sm text-muted-foreground transition hover:text-foreground"
+                    >
+                        ← {projectId ? "Project dashboard" : "Projects"}
+                    </Link>
+
                     <p className="text-xs font-medium uppercase tracking-[0.25em] text-muted-foreground">
                         Evidence search
                     </p>
@@ -261,11 +243,17 @@ export default function SearchPage() {
                 >
                     <div className="flex flex-col gap-4 lg:flex-row">
                         <div className="flex-1">
-                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <label
+                                htmlFor={queryInputId}
+                                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Search evidence
                             </label>
 
                             <input
+                                id={queryInputId}
+                                type="search"
+                                maxLength={500}
                                 value={query}
                                 onChange={(event) =>
                                     setQuery(event.target.value)
@@ -292,28 +280,41 @@ export default function SearchPage() {
 
                     <div className="mt-5 grid gap-3 md:grid-cols-4">
                         <select
+                            aria-label="Project"
                             value={projectId}
                             onChange={(event) =>
-                                setProjectId(event.target.value)
+                                changeProject(event.target.value)
                             }
-                            disabled={loadingProjects}
+                            disabled={
+                                loadingProjects ||
+                                loading ||
+                                projects.length === 0
+                            }
                             className="h-11 rounded-xl border bg-background px-3 text-sm"
                         >
-                            {projects.map((project) => (
-                                <option
-                                    key={project.id}
-                                    value={project.id}
-                                >
-                                    {project.name}
-                                </option>
-                            ))}
+                            {loadingProjects ? (
+                                <option>Loading projects...</option>
+                            ) : projects.length === 0 ? (
+                                <option>No projects found</option>
+                            ) : (
+                                projects.map((project) => (
+                                    <option
+                                        key={project.id}
+                                        value={project.id}
+                                    >
+                                        {project.name}
+                                    </option>
+                                ))
+                            )}
                         </select>
 
                         <select
+                            aria-label="Site"
                             value={siteId}
-                            onChange={(event) =>
-                                setSiteId(event.target.value)
-                            }
+                            onChange={(event) => {
+                                setSiteId(event.target.value);
+                                setLocationId("");
+                            }}
                             className="h-11 rounded-xl border bg-background px-3 text-sm"
                         >
                             <option value="">
@@ -331,6 +332,7 @@ export default function SearchPage() {
                         </select>
 
                         <select
+                            aria-label="Field location"
                             value={locationId}
                             onChange={(event) =>
                                 setLocationId(event.target.value)
@@ -341,7 +343,7 @@ export default function SearchPage() {
                                 All field locations
                             </option>
 
-                            {locations.map((location) => (
+                            {siteLocations.map((location) => (
                                 <option
                                     key={location.id}
                                     value={location.id}
@@ -352,6 +354,7 @@ export default function SearchPage() {
                         </select>
 
                         <select
+                            aria-label="Phase"
                             value={phase}
                             onChange={(event) =>
                                 setPhase(event.target.value)
@@ -385,23 +388,38 @@ export default function SearchPage() {
                     </label>
                 </form>
 
-                {error && (
-                    <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
-                        {error}
+                {[projectsError, error].filter(Boolean).map((message) => (
+                    <div
+                        key={message}
+                        role="alert"
+                        className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+                    >
+                        {message}
                     </div>
-                )}
+                ))}
 
-                <section className="mt-12">
+                <section className="mt-12" aria-busy={loading}>
                     <div className="flex items-end justify-between border-b pb-4">
                         <div>
                             <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
                                 Search results
                             </p>
 
-                            <h2 className="mt-2 text-2xl font-semibold">
-                                {results.length > 0
-                                    ? `${results.length} evidence matches`
-                                    : "No results yet"}
+                            <h2
+                                role="status"
+                                className="mt-2 text-2xl font-semibold"
+                            >
+                                {loading
+                                    ? "Searching..."
+                                    : results.length > 0
+                                      ? `${results.length} evidence ${
+                                            results.length === 1
+                                                ? "match"
+                                                : "matches"
+                                        }`
+                                      : searchedFor
+                                        ? "No matches"
+                                        : "No results yet"}
                             </h2>
                         </div>
 
@@ -412,32 +430,46 @@ export default function SearchPage() {
                         )}
                     </div>
 
-                    {results.length === 0 && !loading ? (
+                    {loading ? (
+                        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                            {Array.from({ length: 6 }).map((_, index) => (
+                                <div
+                                    key={index}
+                                    className="aspect-[4/5] animate-pulse rounded-2xl bg-muted"
+                                />
+                            ))}
+                        </div>
+                    ) : results.length === 0 ? (
                         <div className="mt-8 rounded-2xl border border-dashed p-12 text-center">
                             <p className="text-sm font-medium">
-                                Search your field evidence
+                                {searchedFor
+                                    ? `Nothing matched “${searchedFor}”`
+                                    : "Search your field evidence"}
                             </p>
 
                             <p className="mt-2 text-sm text-muted-foreground">
-                                Try phrases such as “riverbank
-                                cleanup”, “plantation activity”,
-                                or “waste near the river”.
+                                {searchedFor
+                                    ? "Try different words, or widen the site, location, and phase filters."
+                                    : "Try phrases such as “riverbank cleanup”, “plantation activity”, or “waste near the river”."}
                             </p>
                         </div>
                     ) : (
                         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                             {results.map((hit) => (
-                                <article
+                                <Link
                                     key={hit.asset.id}
+                                    href={`/gallery?projectId=${projectId}&asset=${hit.asset.id}`}
                                     className="overflow-hidden rounded-2xl border bg-card transition hover:-translate-y-0.5 hover:shadow-md"
                                 >
                                     <div className="aspect-[4/3] bg-muted">
+                                        {/* The caption is printed below, so the image itself is decorative. */}
                                         <img
-                                            src={hit.asset.secureUrl}
-                                            alt={
-                                                hit.asset.aiCaption ??
-                                                "Field evidence"
-                                            }
+                                            src={thumbnailUrl(
+                                                hit.asset.secureUrl
+                                            )}
+                                            alt=""
+                                            loading="lazy"
+                                            decoding="async"
                                             className="h-full w-full object-cover"
                                         />
                                     </div>
@@ -476,11 +508,19 @@ export default function SearchPage() {
                                         )}
 
                                         <div className="mt-5 flex items-center justify-between border-t pt-4">
+                                            {/*
+                                              * The score is a rank-fusion sum that tops out near 0.03,
+                                              * so it is shown relative to the best hit.
+                                              */}
                                             <span className="text-xs text-muted-foreground">
-                                                Match{" "}
-                                                {Math.round(
-                                                    hit.score * 100
-                                                )}
+                                                Relevance{" "}
+                                                {topScore > 0
+                                                    ? Math.round(
+                                                          (hit.score /
+                                                              topScore) *
+                                                              100
+                                                      )
+                                                    : 0}
                                                 %
                                             </span>
 
@@ -491,7 +531,7 @@ export default function SearchPage() {
                                             </span>
                                         </div>
                                     </div>
-                                </article>
+                                </Link>
                             ))}
                         </div>
                     )}

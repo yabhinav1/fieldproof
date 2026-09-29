@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useId, useState } from "react";
+import Link from "next/link";
 
-type Project = {
-    id: string;
-    name: string;
-};
+import { apiFetch, errorMessage, jsonRequest } from "@/lib/api";
+import { useProjects } from "@/lib/use-projects";
 
 type Report = {
     id: string;
@@ -15,124 +14,123 @@ type Report = {
     htmlUrl?: string;
 };
 
+/* The API accepts a title of 2 to 160 characters, or none. */
+const TITLE_MIN = 2;
+const TITLE_MAX = 160;
+
 export default function ReportPage() {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [projectId, setProjectId] = useState("");
+    return (
+        <Suspense fallback={null}>
+            <ReportView />
+        </Suspense>
+    );
+}
+
+function ReportView() {
+    const {
+        projects,
+        projectId,
+        setProjectId,
+        loading: loadingProjects,
+        error: projectsError,
+    } = useProjects();
+
     const [reports, setReports] = useState<Report[]>([]);
     const [title, setTitle] = useState("");
     const [includeFlagged, setIncludeFlagged] = useState(false);
 
-    const [loadingProjects, setLoadingProjects] = useState(true);
     const [loadingReports, setLoadingReports] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [generated, setGenerated] = useState<Report | null>(null);
     const [error, setError] = useState("");
 
-    useEffect(() => {
-        async function loadProjects() {
-            try {
-                const response = await fetch("/api/projects");
+    const projectSelectId = useId();
+    const titleInputId = useId();
+    const titleHintId = useId();
 
-                if (!response.ok) {
-                    throw new Error("Failed to load projects");
-                }
+    const trimmedTitle = title.trim();
 
-                const result = await response.json();
-                const data: Project[] = result.data ?? [];
-
-                setProjects(data);
-
-                if (data.length > 0) {
-                    setProjectId(data[0].id);
-                }
-            } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load projects"
-                );
-            } finally {
-                setLoadingProjects(false);
-            }
-        }
-
-        loadProjects();
-    }, []);
+    const titleTooShort =
+        trimmedTitle.length > 0 && trimmedTitle.length < TITLE_MIN;
 
     useEffect(() => {
-        if (!projectId) {
-            setReports([]);
-            return;
-        }
+        if (!projectId) return;
+
+        let cancelled = false;
 
         async function loadReports() {
             try {
                 setLoadingReports(true);
 
-                const response = await fetch(
-                    `/api/reports?projectId=${projectId}`
+                const data = await apiFetch<Report[]>(
+                    `/api/reports?projectId=${encodeURIComponent(
+                        projectId
+                    )}`,
+                    undefined,
+                    "Failed to load reports"
                 );
 
-                if (!response.ok) {
-                    throw new Error("Failed to load reports");
+                if (!cancelled) {
+                    setReports(data ?? []);
                 }
-
-                const result = await response.json();
-                setReports(result.data ?? []);
             } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to load reports"
-                );
+                if (!cancelled) {
+                    setReports([]);
+
+                    setError(
+                        errorMessage(err, "Failed to load reports")
+                    );
+                }
             } finally {
-                setLoadingReports(false);
+                if (!cancelled) {
+                    setLoadingReports(false);
+                }
             }
         }
 
         loadReports();
+
+        return () => {
+            cancelled = true;
+        };
     }, [projectId]);
 
+    /* Nothing from the previous project may linger under the new one. */
+    function changeProject(id: string) {
+        setProjectId(id);
+        setReports([]);
+        setGenerated(null);
+        setError("");
+    }
+
     async function generateReport() {
-        if (!projectId) return;
+        if (!projectId || generating || titleTooShort) return;
 
         try {
             setGenerating(true);
+            setGenerated(null);
             setError("");
 
-            const response = await fetch("/api/reports", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
+            const report = await apiFetch<Report>(
+                "/api/reports",
+                jsonRequest("POST", {
                     projectId,
-                    title: title.trim() || undefined,
+                    title: trimmedTitle || undefined,
                     includeFlagged,
                 }),
-            });
-
-            const result = await response.json();
-
-            if (!response.ok || !result.ok) {
-                throw new Error(
-                    result.error || "Failed to generate report"
-                );
-            }
-
-            const report = result.data;
+                "Failed to generate report"
+            );
 
             setReports((current) => [report, ...current]);
             setTitle("");
 
-            if (report.htmlUrl) {
-                window.open(report.htmlUrl, "_blank");
-            }
+            /*
+             * Generation takes long enough that a browser blocks a
+             * window opened afterwards, so the report is offered as a link.
+             */
+            setGenerated(report);
         } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to generate report"
-            );
+            setError(errorMessage(err, "Failed to generate report"));
         } finally {
             setGenerating(false);
         }
@@ -142,6 +140,13 @@ export default function ReportPage() {
         <main className="min-h-screen bg-background">
             <section className="mx-auto max-w-6xl px-6 py-14">
                 <div className="max-w-3xl">
+                    <Link
+                        href={projectId ? `/project/${projectId}` : "/"}
+                        className="mb-8 inline-block text-sm text-muted-foreground transition hover:text-foreground"
+                    >
+                        ← {projectId ? "Project dashboard" : "Projects"}
+                    </Link>
+
                     <p className="text-xs font-medium uppercase tracking-[0.25em] text-muted-foreground">
                         Impact reporting
                     </p>
@@ -152,48 +157,83 @@ export default function ReportPage() {
 
                     <p className="mt-4 text-lg leading-8 text-muted-foreground">
                         Generate an evidence-backed impact report from the
-                        project's field assets and comparisons.
+                        project&apos;s field assets and comparisons.
                     </p>
                 </div>
 
                 <div className="mt-10 rounded-2xl border bg-card p-6 shadow-sm">
                     <div className="grid gap-5 md:grid-cols-2">
                         <div>
-                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <label
+                                htmlFor={projectSelectId}
+                                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Project
                             </label>
 
                             <select
+                                id={projectSelectId}
                                 value={projectId}
                                 onChange={(event) =>
-                                    setProjectId(event.target.value)
+                                    changeProject(event.target.value)
                                 }
-                                disabled={loadingProjects}
-                                className="mt-2 h-12 w-full rounded-xl border bg-background px-3 text-sm"
+                                disabled={
+                                    loadingProjects ||
+                                    generating ||
+                                    projects.length === 0
+                                }
+                                className="mt-2 h-12 w-full rounded-xl border bg-background px-3 text-sm disabled:opacity-60"
                             >
-                                {projects.map((project) => (
-                                    <option
-                                        key={project.id}
-                                        value={project.id}
-                                    >
-                                        {project.name}
-                                    </option>
-                                ))}
+                                {loadingProjects ? (
+                                    <option>Loading projects...</option>
+                                ) : projects.length === 0 ? (
+                                    <option>No projects found</option>
+                                ) : (
+                                    projects.map((project) => (
+                                        <option
+                                            key={project.id}
+                                            value={project.id}
+                                        >
+                                            {project.name}
+                                        </option>
+                                    ))
+                                )}
                             </select>
                         </div>
 
                         <div>
-                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <label
+                                htmlFor={titleInputId}
+                                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                            >
                                 Report title
                             </label>
 
                             <input
+                                id={titleInputId}
                                 value={title}
+                                maxLength={TITLE_MAX}
+                                aria-invalid={titleTooShort}
+                                aria-describedby={
+                                    titleTooShort ? titleHintId : undefined
+                                }
                                 onChange={(event) =>
                                     setTitle(event.target.value)
                                 }
-                                placeholder="Enter report title (optional)" className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                placeholder="Enter report title (optional)"
+                                className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
                             />
+
+                            {titleTooShort && (
+                                <p
+                                    id={titleHintId}
+                                    className="mt-2 text-xs text-destructive"
+                                >
+                                    Use at least {TITLE_MIN} characters, or
+                                    leave the title empty to have one
+                                    written for you.
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -210,19 +250,59 @@ export default function ReportPage() {
                     </label>
 
                     <button
+                        type="button"
                         onClick={generateReport}
-                        disabled={generating || !projectId}
+                        disabled={
+                            generating || !projectId || titleTooShort
+                        }
                         className="mt-6 h-12 rounded-xl bg-foreground px-6 text-sm font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {generating
                             ? "Generating report..."
                             : "Generate impact report"}
                     </button>
+
+                    {generating && (
+                        <p
+                            role="status"
+                            className="mt-3 text-xs text-muted-foreground"
+                        >
+                            This can take a minute or two. Keep this page
+                            open.
+                        </p>
+                    )}
                 </div>
 
-                {error && (
-                    <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
-                        {error}
+                {[projectsError, error].filter(Boolean).map((message) => (
+                    <div
+                        key={message}
+                        role="alert"
+                        className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+                    >
+                        {message}
+                    </div>
+                ))}
+
+                {generated && (
+                    <div
+                        role="status"
+                        className="mt-6 flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <span>
+                            <span className="font-medium">
+                                {generated.title}
+                            </span>{" "}
+                            is ready.
+                        </span>
+
+                        <a
+                            href={`/api/reports/${generated.id}/html`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-10 items-center justify-center rounded-xl bg-foreground px-4 text-sm font-medium text-background hover:opacity-90"
+                        >
+                            Open report ↗
+                        </a>
                     </div>
                 )}
 
@@ -238,7 +318,7 @@ export default function ReportPage() {
                         </h2>
                     </div>
 
-                    {loadingReports ? (
+                    {loadingReports || loadingProjects ? (
                         <div className="py-12 text-sm text-muted-foreground">
                             Loading reports...
                         </div>
@@ -275,7 +355,7 @@ export default function ReportPage() {
                                     <a
                                         href={`/api/reports/${report.id}/html`}
                                         target="_blank"
-                                        rel="noreferrer"
+                                        rel="noopener noreferrer"
                                         className="inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-medium hover:bg-muted"
                                     >
                                         Open report ↗

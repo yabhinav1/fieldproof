@@ -1,6 +1,13 @@
 {
   "name": "fieldproof",
   "version": "0.1.0",
+  "description": "Impact and sustainability media platform for NGOs, built on Cloudinary: organises, verifies, compares and reports on field photos.",
+  "license": "MIT",
+  "homepage": "https://fieldproof-kappa.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yabhinav1/fieldproof.git"
+  },
   "private": true,
   "scripts": {
     "dev": "next dev",

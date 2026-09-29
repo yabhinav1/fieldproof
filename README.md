@@ -1,182 +1,242 @@
+<div align="center">
+
 # FieldProof
 
-AI-powered impact and sustainability media platform built on Cloudinary.
-Code Cubicle 2026 · Problem Statement 02.
+### Field photos in. Verified, searchable, report-ready evidence out.
 
-NGOs upload raw field photos. FieldProof organises them by project, site and time, shows before-and-after change with an AI explanation, makes everything searchable in plain English, and generates impact reports where every image traces back to its original Cloudinary asset.
+An impact and sustainability media platform for NGOs, built on Cloudinary.
 
-## Quick start
+**[Live demo](https://fieldproof-kappa.vercel.app)** &nbsp;·&nbsp; [Two-minute tour](#two-minute-tour) &nbsp;·&nbsp; [How Cloudinary is used](#how-cloudinary-is-used) &nbsp;·&nbsp; [API reference](docs/API.md)
 
-```bash
-npm install
-cp .env.example .env      # fill in keys as you get them; everything is optional to boot
-npm run seed              # creates the demo project + 3 sites
-npm run dev               # http://localhost:3000
-curl http://localhost:3000/api/health
+![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![Cloudinary](https://img.shields.io/badge/Cloudinary-media_pipeline-3448C5?logo=cloudinary&logoColor=white) ![Postgres + pgvector](https://img.shields.io/badge/Postgres-pgvector-4169E1?logo=postgresql&logoColor=white) [![Licence: MIT](https://img.shields.io/badge/licence-MIT-2ea44f)](LICENSE)
+
+<a href="https://fieldproof-kappa.vercel.app">
+  <img src="docs/screenshots/hero.webp" alt="FieldProof comparing a before and an after photo of a plantation site, with the AI assessment underneath" width="100%">
+</a>
+
+<sub>Code Cubicle 2026 · Problem Statement 02</sub>
+
+</div>
+
+## The problem
+
+An NGO restoring a riverbank takes thousands of photos over six months. They end up in phone galleries and chat groups: no site, no date anyone trusts, duplicates everywhere.
+
+Then a donor asks a simple question: **what changed?** Answering it takes weeks of sorting by hand. And when the report is finally written, nobody can say where a given image came from, or whether it shows what the caption claims.
+
+## What FieldProof does
+
+| | What you get | How it works |
+|---|---|---|
+| **Organises** | Every photo lands in the right site and phase | Site from GPS distance, phase (before, during, after) from the EXIF capture date |
+| **Verifies** | Doubtful photos are flagged and kept out of reports | Near-duplicate detection by perceptual hash, GPS and date sanity checks, phase-order conflicts |
+| **Compares** | A before and after pair becomes a plain-language assessment | A vision model rates five fixed metrics and says honestly whether the two photos show the same spot |
+| **Searches** | "plastic waste along the river bank" finds the photos | Semantic and keyword search fused, with keyword fallback if the AI provider is down |
+| **Reports** | One click produces a donor-ready impact report | The narrative is written only from recorded facts, and every image traces back to its original |
+
+## Two-minute tour
+
+Open the **[live demo](https://fieldproof-kappa.vercel.app)** and choose *Yamuna Riverbank Restoration*. The header links every section.
+
+| Step | Where | What to look for |
+|---|---|---|
+| 1 | **Overview** | 64 photos across 3 sites, sorted into phases without anyone tagging them |
+| 2 | **Gallery** → pick a field location → open a photo | The provenance panel: capture metadata, AI caption and tags, and the Cloudinary asset it came from |
+| 3 | **Comparison** → *Site B · Wazirabad plantation* → a saved assessment | Drag the slider, then read the five metrics and the "same location" verdict |
+| 4 | **Search** → `plastic waste along the river bank` | Results ranked by meaning, not only by matching words |
+| 5 | **Reports** → *Open report* | A self-contained page that prints to PDF |
+
+New comparisons and reports run on the free Gemini tier and take 10 to 90 seconds. Run one at a time.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/dashboard.webp" alt="Project dashboard with totals, latest photographs and field locations"></td>
+    <td width="50%"><img src="docs/screenshots/gallery.webp" alt="Gallery filtered to one field location and grouped by phase"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Project dashboard</b><br><sub>Totals, latest evidence, field locations</sub></td>
+    <td align="center"><b>Gallery</b><br><sub>One location, grouped by phase, with verification status</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/provenance.webp" alt="Asset details dialog showing AI interpretation, capture metadata and provenance"></td>
+    <td><img src="docs/screenshots/search.webp" alt="Search results for a natural language query"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Provenance</b><br><sub>Where a photo came from and what was derived from it</sub></td>
+    <td align="center"><b>Search</b><br><sub>Natural language over captions, tags and embeddings</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/comparison-pick.webp" alt="Choosing a before and an after photo for a field location"></td>
+    <td><img src="docs/screenshots/report.webp" alt="Generated impact report with key numbers, a site narrative and a before and after pair"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Pair selection</b><br><sub>A before and after pair is suggested for each location</sub></td>
+    <td align="center"><b>Impact report</b><br><sub>Narrative, key numbers and evidence in one page</sub></td>
+  </tr>
+</table>
+
+## How Cloudinary is used
+
+Cloudinary is the media pipeline, not only the storage. All of it lives in [`src/server/cloudinary.ts`](src/server/cloudinary.ts).
+
+| FieldProof needs | Cloudinary capability | Details |
+|---|---|---|
+| Uploads that never pass through our server | **Signed direct uploads** | The server signs the parameters; the browser posts the file straight to Cloudinary |
+| Where and when a photo was taken | **`image_metadata`** | EXIF capture date and GPS, parsed in [`exif.ts`](src/server/lib/exif.ts) and [`geo.ts`](src/server/lib/geo.ts) |
+| Catching the same photo uploaded twice | **`phash`** | Perceptual hashes compared by Hamming distance in [`verify.ts`](src/server/lib/verify.ts) |
+| Captions and tags for search | **AI captioning and auto-tagging add-ons** | If a free quota runs out, only the failing add-on is dropped and a vision model fills the gap |
+| Before and after images that line up | **Transformations** `c_fill,g_auto` | Both photos get the same 1024 × 768 crop, so the slider compares like with like |
+| Fast grids | **`f_auto,q_auto` delivery** | Pages load 400 px thumbnails; originals are only opened on request |
+| A shareable campaign image | **Text overlays and gradient effects** | Headline and organisation name composed onto the hero photo by URL alone |
+| Trust | **Public ID as the anchor** | Every derived URL is stored with its exact transformation in a `provenance` table |
+
+## How it works
+
+```mermaid
+flowchart LR
+    U[Field team] -->|signed upload| C[(Cloudinary)]
+    U -->|public IDs| I
+
+    subgraph FieldProof
+        I[Ingest] --> V[Verify]
+        V --> DB[(Postgres<br/>+ pgvector)]
+        DB --> S[Hybrid search]
+        DB --> K[Compare]
+        DB --> R[Report]
+    end
+
+    C -->|EXIF · GPS · phash<br/>captions · tags| I
+    C -->|matched crops| K
+    C -->|hero and campaign image| R
+    AI[Gemini or Claude<br/>schema-constrained] --> K
+    AI --> R
+    AI -->|embeddings| S
 ```
 
-With no `DATABASE_URL`, an embedded Postgres (PGlite, with pgvector) is created in `./.pglite`. Set `DATABASE_URL` to a Neon connection string to use a real database; migrations run automatically on boot.
+1. **Ingest.** For each uploaded photo: read EXIF, assign the site by GPS and the phase by date, run verification, embed the caption and tags.
+2. **Verify.** A photo with a blocking flag (duplicate, future date, phase-order conflict, no site match) is marked unverified. Reports leave unverified photos out by default.
+3. **Compare.** The model must answer in a fixed JSON schema, validated with Zod. It reports whether the photos show the same place. In strict mode, when they clearly do not, every metric is returned as "not visible" instead of guessed.
+4. **Report.** The narrative prompt receives counts, captions and comparison results, and nothing else. It is told to use only those facts.
 
-Everything runs on free tiers. No card is needed for any of it.
+## Built with
 
-| Integration | Env | Cost | Without it |
-|---|---|---|---|
-| Cloudinary | `CLOUDINARY_URL` | free | Uploads, ingest, comparisons and reports return 503 |
-| Cloudinary add-ons | `CLOUDINARY_AUTO_TAGGING`, `CLOUDINARY_CAPTIONING` | free quota | No AI tags / captions; EXIF, GPS, phash still work |
-| Gemini (Google AI Studio) | `GEMINI_API_KEY` | free | Comparisons and report narratives return 503; search is keyword-only |
-| Anthropic (alternative to Gemini) | `ANTHROPIC_API_KEY` | paid | Not needed when Gemini is set |
-| Voyage AI (alternative embeddings) | `VOYAGE_API_KEY` | free | Not needed when Gemini is set |
-| Neon Postgres | `DATABASE_URL` | free | Embedded PGlite is used (local only) |
-
-## Scripts
-
-| Command | What it does |
+| Layer | Choice |
 |---|---|
-| `npm run dev` | Next.js dev server |
-| `npm run typecheck` / `npm test` | Type check / run unit + PGlite integration tests |
-| `npm run seed` | Create the Green Yamuna demo project and sites |
-| `npm run photos -- --curated data/curated.json` | Download the curated demo photo set (64 openly licensed photos from Wikimedia Commons) into `data/` |
-| `npm run upload -- --project green-yamuna --dir ./data` | Upload a folder to Cloudinary and ingest it (see script header for folder conventions) |
-| `npm run cloudinary:setup` | Register named transformations and structured metadata fields in Cloudinary |
-| `npm run db:generate` | Regenerate SQL migrations after editing `src/server/db/schema.ts` |
+| App | Next.js 16 (App Router), React 19, TypeScript in strict mode, Tailwind CSS 4 |
+| Media | Cloudinary: uploads, analysis add-ons, transformations, overlays, delivery |
+| Data | Postgres with pgvector through Drizzle ORM. Neon in production, embedded PGlite locally |
+| AI | Gemini by default (free tier), Claude as an alternative. Gemini or Voyage embeddings |
+| Quality | 55 unit and integration tests (Vitest), ESLint and a strict type check |
 
-## Architecture
+Everything runs on free tiers. No card is needed.
 
-```
-Browser ──upload──► Cloudinary ◄──explicit / url──┐
-   │                                              │
-   └──JSON──► Next.js route handlers (src/app/api/*)
-                 └── services (src/server/services/*)
-                       ├── Postgres via Drizzle (Neon in prod, PGlite locally)
-                       ├── Cloudinary SDK: tagging, captioning, EXIF, phash, transformations, overlays
-                       ├── Gemini or Claude vision (JSON-schema outputs): before/after assessment, report narrative
-                       └── Gemini or Voyage embeddings + pgvector: hybrid semantic + keyword search
-```
-
-Key directories:
-
-- `src/server/db/schema.ts` — tables: projects, sites, assets, comparisons, reports, provenance
-- `src/server/services/ingest.ts` — upload → EXIF → site by GPS → phase by date → verification → embedding
-- `src/server/lib/verify.ts` — duplicate (phash), GPS, date and phase-order checks
-- `src/server/ai/structured.ts` — one entry point for schema-constrained generation; dispatches to Gemini or Anthropic
-- `src/server/ai/compare.ts`, `narrative.ts` — the two prompts, Zod-validated on the way back
-- `src/server/cloudinary.ts` — all Cloudinary usage; every derived URL is recorded in `provenance`
-
-Frontend:
-
-- `src/app/page.tsx` — project list; `src/app/project/[id]` — project dashboard
-- `src/app/gallery`, `comparison`, `search`, `report` — one page per workflow. Each opens on the project named in `?projectId=`, and falls back to the first project without it. The gallery also accepts `?locationId=` and `?asset=`.
-- `src/lib/api.ts` — `apiFetch`, the one place that reads the API's response envelope and error messages
-- `src/lib/use-projects.ts` — project list and active project, shared by the four workflow pages
-- `src/lib/cloudinary-url.ts` — derived image URLs; grids load thumbnails, never originals
-- `src/lib/locations.ts` — the rule for which assets belong to a field location
-
-Backend code never imports from `src/app`, `src/components` or `src/lib`.
-
-## API
-
-All responses are `{ ok: true, data }` or `{ ok: false, error, details? }`. IDs are UUIDs. Dates are ISO strings.
-
-`error` is always a message that can be shown to a user. Statuses: `400` invalid input (including an id that is not a UUID), `404` not found, `409` conflict such as a project slug that is already taken, `429` AI provider rate limit, `502` / `503` a provider failed or is not configured. A `500` never includes internals in production.
-
-A bare date in a `to` filter, such as `to=2026-09-01`, includes that whole day.
-
-### Health
-`GET /api/health` → database driver and which integrations are configured.
-
-### Projects and sites
-| Method | Path | Body / query | Returns |
-|---|---|---|---|
-| GET | `/api/projects` | | projects with `siteCount`, `assetCount` |
-| POST | `/api/projects` | `{ name, slug?, description?, orgName?, duringStart?, afterStart? }` | project |
-| GET | `/api/projects/:id` | | project + `sites[]` (each with `assetCounts`) + `totals { before, during, after, unknown, total, flagged, assets, verified }` + `unassignedAssets` |
-| PATCH | `/api/projects/:id` | any of the create fields | project |
-| DELETE | `/api/projects/:id` | | `{ deleted }` |
-| GET | `/api/projects/:id/sites` | | sites |
-| POST | `/api/projects/:id/sites` | `{ name, lat, lng, description?, radiusM? }` | site |
-| GET | `/api/projects/:id/timeline` | | `[{ siteId, before[], during[], after[], unknown[] }]` oldest first |
-
-`duringStart` / `afterStart` define phases: captured before `duringStart` = **before**, between = **during**, after `afterStart` = **after**.
-
-### Field locations
-| Method | Path | Body / query | Returns |
-|---|---|---|---|
-| GET | `/api/locations?projectId=&siteId=&q=` | | named locations (each site gets a default one named after it) |
-| POST | `/api/locations` | `{ projectId, siteId?, name, lat?, lng? }` | location |
-
-A location is a reusable label inside a site for repeat photography of one spot. Ingest accepts `locationId`; without it an asset gets its site's default location. `npm run backfill:locations -- --project <slug>` creates defaults and attaches existing assets.
-
-### Upload and ingest
-1. `POST /api/uploads/sign` with `{ projectId, siteId? }` → `{ cloudName, apiKey, timestamp, signature, folder, params, uploadUrl }`.
-2. Upload to `uploadUrl` as multipart form: `file`, `api_key`, `signature`, and **every key in `params` unchanged**. Or pass these to the Cloudinary Upload Widget as `uploadSignature`.
-3. `POST /api/assets/ingest` with `{ projectId, publicIds: string[], siteId?, phase?, analyze? }` → `{ summary, results[] }`.
-
-Ingest runs Cloudinary analysis (tags, caption, EXIF, phash, colours), fills missing captions/tags with the vision model when add-on quotas run out, assigns site by GPS proximity and phase by EXIF date, runs verification, and embeds for search. Re-ingesting the same `public_id` updates in place.
-
-### Assets
-| Method | Path | Query / body | Returns |
-|---|---|---|---|
-| GET | `/api/assets` | `projectId` (required), `siteId`, `phase`, `verified=true|false`, `from`, `to`, `limit`, `offset` | assets, newest first |
-| GET | `/api/assets/:id` | | asset + `site` + `provenance { source, exif, ai, derivations[] }` |
-| PATCH | `/api/assets/:id` | `{ siteId?, phase?, resetPhase?, verified? }` | asset |
-| DELETE | `/api/assets/:id` | | `{ deleted }` |
-
-Asset fields the UI will use: `secureUrl`, `cloudinaryPublicId`, `phase`, `capturedAt`, `lat`, `lng`, `siteId`, `aiTags[]`, `aiCaption`, `verified`, `flags[] { code, message, relatedAssetId? }`, `width`, `height`, `colors`.
-
-Flag codes: `no_gps`, `no_capture_date` (informational), `far_from_site`, `no_site_match`, `future_date`, `duplicate`, `phase_order`. `verified` is false when a blocking flag is present; reports skip unverified assets by default.
-
-### Before and after
-| Method | Path | Body / query | Returns |
-|---|---|---|---|
-| GET | `/api/sites/:id/suggest-pair` | | `{ beforeAssetId, afterAssetId, strategy }` or `null` |
-| POST | `/api/comparisons` | `{ beforeAssetId, afterAssetId, mode? }` | comparison (takes ~10–30 s) |
-| GET | `/api/comparisons?projectId=&siteId=` | | comparisons, newest first |
-| GET | `/api/comparisons/:id` | | comparison |
-| DELETE | `/api/comparisons/:id` | | `{ deleted }` |
-
-`mode` is `same_spot` (default: strict repeat photography, metrics only when the model agrees it is the same place) or `representative` (two photos standing for the site before and after, possibly different vantage points; metrics compare the depicted conditions and the UI must label it "representative"). Use `representative` when the team has no fixed-point pairs.
-
-Comparison fields: `mode`, `beforeUrl`, `afterUrl` (same 1024×768 crop for the slider), `headline`, `summary`, `sameLocation`, `locationConfidence`, `metrics[] { name, direction, reason }` where name ∈ `vegetation_cover | waste_and_debris | water_clarity | human_activity | infrastructure` and direction ∈ `increased | decreased | unchanged | not_visible`.
-
-### Search
-`GET /api/search?q=plastic+waste+near+river&projectId=…&siteId=&locationId=&phase=&from=&to=&verifiedOnly=true&limit=30`
-→ `{ mode: "hybrid" | "keyword", hits: [{ asset, score, matchedBy: ["semantic" | "keyword"] }] }`
-
-`score` is a reciprocal-rank-fusion sum, useful for ordering only: its maximum is about 0.03, so it is not a percentage. The UI shows each hit relative to the best one. If the embedding provider is unavailable the search still answers, with keyword results.
-
-### Reports
-| Method | Path | Body / query | Returns |
-|---|---|---|---|
-| POST | `/api/reports` | `{ projectId, title?, includeFlagged? }` | report metadata + `htmlUrl` (takes ~20–60 s) |
-| GET | `/api/reports?projectId=` | | report list |
-| GET | `/api/reports/:id` | | report `content` (structured), `campaignImageUrl`, `assetIds`, `comparisonIds`, `htmlUrl` |
-| GET | `/api/reports/:id/html` | | self-contained HTML page (iframe it, or print to PDF) |
-| GET | `/api/reports/:id/sources` | | original assets behind the report |
-| DELETE | `/api/reports/:id` | | `{ deleted }` (source assets untouched) |
-
-`content` shape: `{ title, executiveSummary, keyNumbers[{label,value}], sites[{siteId, siteName, narrative, assetCount, heroComparisonId?}], callToAction, generatedAt }`.
-
-### Provenance
-Every derived image (thumbnail, comparison crop, report hero, campaign image) is stored in `provenance` with the exact Cloudinary transformation string and the comparison/report it was made for. `GET /api/assets/:id` returns it all under `provenance.derivations`.
-
-## Gemini free tier notes
-
-- Default model is `gemini-3.5-flash-lite` because it is the only tier that answers reliably on a free key; the full flash models return 503 "high demand" most of the time. The backend falls back down `GEMINI_FALLBACK_MODELS` automatically and remembers busy models for two minutes.
-- Comparisons take 10–30 s and reports 30–90 s on the free tier. Generate them one at a time during a demo.
-- Cloudinary add-ons (tagging, captioning) do **not** run on the `samples/` images Cloudinary preloads into new accounts. Upload your own photos.
-
-## Demo data
+## Run it locally
 
 ```bash
-npm run seed
-npm run photos -- --curated data/curated.json   # 64 reviewed CC-licensed photos → data/site-{a,b,c}/{before,during,after}
+git clone https://github.com/yabhinav1/fieldproof.git
+cd fieldproof
+npm install
+cp .env.example .env      # every key is optional; the app boots with none
+npm run seed              # demo project and its three sites
+npm run dev               # http://localhost:3000
+```
+
+With no `DATABASE_URL`, an embedded Postgres is created in `./.pglite`. Migrations run on start.
+
+| Integration | Variable | Without it |
+|---|---|---|
+| Cloudinary | `CLOUDINARY_URL` | Uploads, comparisons and reports answer 503 |
+| Cloudinary add-ons | `CLOUDINARY_AUTO_TAGGING`, `CLOUDINARY_CAPTIONING` | The vision model writes captions and tags instead |
+| Gemini | `GEMINI_API_KEY` | No comparisons or report narratives; search is keyword-only |
+| Neon Postgres | `DATABASE_URL` | Embedded PGlite is used |
+
+<details>
+<summary><b>Load the demo photos</b></summary>
+
+```bash
+npm run photos -- --curated data/curated.json    # 64 openly licensed photos from Wikimedia Commons
 npm run upload -- --project green-yamuna --dir ./data
 ```
 
-`data/curated.json` is the reviewed list (title, site, phase, licence, author); `data/ATTRIBUTION.md` must ship with any demo that shows the photos. The images themselves are gitignored. To find more candidates, edit `data/manifest.json` and run `npm run photos` without `--curated`.
+Folders named like a site (`site-a`) pin the site, and a `before`, `during` or `after` folder pins the phase. Otherwise GPS and EXIF decide, and anything ambiguous is flagged for review.
 
-Folder names that start like a site name ("site-a", "Site A") pin the site; a `before|during|after` folder pins the phase. Otherwise GPS and EXIF decide and anything ambiguous is flagged for review.
+</details>
 
-## Deploy
+<details>
+<summary><b>All scripts</b></summary>
 
-Vercel: import the repo, set the env vars from `.env.example`, done. Route handlers set `maxDuration` for the slow AI endpoints. Use a Neon pooled connection string for `DATABASE_URL`.
+| Command | What it does |
+|---|---|
+| `npm run dev` / `build` / `start` | Development server, production build, production server |
+| `npm test` | Unit tests and integration tests against an in-memory Postgres |
+| `npm run lint` / `typecheck` | ESLint and the TypeScript compiler |
+| `npm run seed` | Create the demo project and sites |
+| `npm run photos` | Download the demo photo set into `data/` |
+| `npm run upload` | Upload a folder to Cloudinary and ingest it |
+| `npm run reanalyze` | Re-run analysis on photos that are missing captions |
+| `npm run cloudinary:setup` | Register named transformations and metadata fields in Cloudinary |
+| `npm run db:generate` | Regenerate SQL migrations after a schema change |
+
+</details>
+
+<details>
+<summary><b>Deploy your own</b></summary>
+
+Import the repository into Vercel and set the variables from [`.env.example`](.env.example). Use a Neon pooled connection string for `DATABASE_URL`.
+
+The API has no accounts. On a public deployment set `PROTECT_DEMO_DATA=true`, which refuses every delete and leaves uploads, comparisons and reports working.
+
+</details>
+
+<details>
+<summary><b>Notes on the Gemini free tier</b></summary>
+
+- The default model is `gemini-3.5-flash-lite`, the tier that answers reliably on a free key. When a model is busy, the backend moves down `GEMINI_FALLBACK_MODELS` and skips that model for two minutes.
+- Comparisons take 10 to 30 seconds and reports 30 to 90 seconds.
+- Cloudinary add-ons do not run on the `samples/` images that new accounts come with. Upload your own photos.
+
+</details>
+
+## Project structure
+
+```
+src/
+├── app/                      Pages and API routes
+│   ├── page.tsx              Project list
+│   ├── project/[id]/         Project dashboard
+│   ├── gallery/              Evidence library, upload and provenance
+│   ├── comparison/           Before and after with AI assessment
+│   ├── search/               Natural language search
+│   ├── report/               Report generation and history
+│   ├── credits/              Photo credits
+│   └── api/                  Route handlers, one folder per resource
+├── components/               Shared header, footer and UI primitives
+├── lib/                      Browser helpers: API client, image URLs, location rule
+└── server/
+    ├── cloudinary.ts         Every Cloudinary call and transformation
+    ├── ai/                   Prompts, schema-constrained generation, embeddings
+    ├── services/             Ingest, search, comparisons, reports
+    ├── lib/                  EXIF, GPS, phase, perceptual hash, verification
+    └── db/                   Drizzle schema and database connection
+tests/                        Unit tests, plus integration tests on an in-memory Postgres
+drizzle/                      SQL migrations
+scripts/                      Seed, photo download, bulk upload, maintenance
+docs/                         API reference and screenshots
+```
+
+Full endpoint documentation is in **[docs/API.md](docs/API.md)**.
+
+## Team
+
+| | Focus |
+|---|---|
+| [@yabhinav1](https://github.com/yabhinav1) | Backend, Cloudinary pipeline, AI and search |
+| [@tiwarianikettt](https://github.com/tiwarianikettt) | Frontend and user experience |
+
+## Credits and licence
+
+The code is released under the [MIT Licence](LICENSE).
+
+The demo photographs, including those in the screenshots above, are from Wikimedia Commons under Creative Commons and public-domain licences. Authors and licences are listed in **[data/ATTRIBUTION.md](data/ATTRIBUTION.md)** and on the app's [photo credits page](https://fieldproof-kappa.vercel.app/credits). The demo project, its sites and its dates are illustrative; the people and places shown have no connection to FieldProof.

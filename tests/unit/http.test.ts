@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorToResponse, notFound, param } from "@/server/http";
+import { errorToResponse, notFound, param, route } from "@/server/http";
 
 /** Shape Drizzle throws: a wrapper carrying the SQL, with the driver error as `cause`. */
 function driverError(code: string) {
@@ -53,5 +53,31 @@ describe("param", () => {
   it("rejects anything else with a 400 before it reaches the database", async () => {
     await expect(param(ctx("not-a-uuid"), "id")).rejects.toMatchObject({ status: 400 });
     await expect(param(ctx(""), "id")).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("PROTECT_DEMO_DATA", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const ctx = { params: Promise.resolve({}) };
+  const request = (method: string) => new Request("http://localhost/api/assets/x", { method });
+
+  it("refuses DELETE without running the handler, and leaves other methods alone", async () => {
+    vi.stubEnv("PROTECT_DEMO_DATA", "true");
+    const handler = vi.fn(async () => new Response("ran"));
+    const wrapped = route(handler);
+
+    const refused = await wrapped(request("DELETE"), ctx);
+    expect(refused.status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+
+    expect(await (await wrapped(request("POST"), ctx)).text()).toBe("ran");
+    expect(await (await wrapped(request("GET"), ctx)).text()).toBe("ran");
+  });
+
+  it("is off unless asked for", async () => {
+    vi.stubEnv("PROTECT_DEMO_DATA", "");
+    const wrapped = route(async () => new Response("ran"));
+    expect(await (await wrapped(request("DELETE"), ctx)).text()).toBe("ran");
   });
 });

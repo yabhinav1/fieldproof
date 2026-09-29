@@ -3,6 +3,8 @@
 import { FormEvent, Suspense, useEffect, useId, useState } from "react";
 import Link from "next/link";
 
+import { AppFooter } from "@/components/app-footer";
+import { AppHeader } from "@/components/app-header";
 import { apiFetch, errorMessage } from "@/lib/api";
 import { thumbnailUrl } from "@/lib/cloudinary-url";
 import { useProjects } from "@/lib/use-projects";
@@ -212,16 +214,14 @@ function SearchView() {
     }
 
     return (
-        <main className="min-h-screen bg-background">
+        <main className="min-h-screen bg-[#f7f8f6]">
+            <AppHeader
+                projectId={projectId || undefined}
+                current="search"
+            />
+
             <section className="mx-auto max-w-7xl px-6 py-14">
                 <div className="max-w-3xl">
-                    <Link
-                        href={projectId ? `/project/${projectId}` : "/"}
-                        className="mb-8 inline-block text-sm text-muted-foreground transition hover:text-foreground"
-                    >
-                        ← {projectId ? "Project dashboard" : "Projects"}
-                    </Link>
-
                     <p className="text-xs font-medium uppercase tracking-[0.25em] text-muted-foreground">
                         Evidence search
                     </p>
@@ -537,6 +537,8 @@ function SearchView() {
                     )}
                 </section>
             </section>
+
+            <AppFooter />
         </main>
     );
 }

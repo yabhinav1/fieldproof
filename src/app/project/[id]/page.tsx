@@ -14,6 +14,8 @@ import {
   Waves,
 } from "lucide-react";
 
+import { AppFooter } from "@/components/app-footer";
+import { AppHeader } from "@/components/app-header";
 import { apiFetch, errorMessage } from "@/lib/api";
 import { thumbnailUrl } from "@/lib/cloudinary-url";
 import { assetBelongsToLocation } from "@/lib/locations";
@@ -263,36 +265,7 @@ export default function ProjectDashboard() {
 
   return (
     <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
-      {/* Header */}
-      <header className="border-b border-black/[0.07] bg-[#f7f8f6]">
-        <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-6 lg:px-10">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#172019] text-white">
-              <span className="text-sm font-semibold">
-                F
-              </span>
-            </div>
-
-            <div className="text-left">
-              <p className="text-[15px] font-semibold tracking-[-0.02em]">
-                FieldProof
-              </p>
-
-              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-                Field evidence
-              </p>
-            </div>
-          </Link>
-
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-[#172019]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Projects
-          </Link>
-        </div>
-      </header>
+      <AppHeader projectId={projectId} current="dashboard" />
 
       {/* Project heading */}
       <section className="mx-auto max-w-[1440px] px-6 pb-10 pt-12 lg:px-10 lg:pt-16">
@@ -672,16 +645,7 @@ export default function ProjectDashboard() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-black/[0.07]">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-8 text-xs text-muted-foreground lg:px-10">
-          <span>FieldProof</span>
-
-          <Link href="/" className="hover:text-[#172019]">
-            Back to projects
-          </Link>
-        </div>
-      </footer>
+      <AppFooter />
     </main>
   );
 }

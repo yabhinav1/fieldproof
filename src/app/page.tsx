@@ -8,10 +8,11 @@ import {
   Image as ImageIcon,
   Search,
   ShieldCheck,
-  Sparkles,
   Waves,
 } from "lucide-react";
 
+import { AppFooter } from "@/components/app-footer";
+import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { apiFetch, errorMessage } from "@/lib/api";
@@ -93,11 +94,18 @@ export default function Home() {
     }
 
     async function loadCard(project: Project) {
-      const [overview, latest] = await Promise.all([
+      const [overview, outcome, latest] = await Promise.all([
         // A card stays visible with whatever part of it could be loaded.
         apiFetch<ProjectOverview>(`/api/projects/${project.id}`, {
           cache: "no-store",
         }).catch(() => undefined),
+
+        // The cover shows the outcome: the newest verified "after" photo,
+        // or failing that simply the newest photo.
+        apiFetch<Array<{ secureUrl: string }>>(
+          `/api/assets?projectId=${project.id}&phase=after&verified=true&limit=1`,
+          { cache: "no-store" }
+        ).catch(() => []),
 
         apiFetch<Array<{ secureUrl: string }>>(
           `/api/assets?projectId=${project.id}&limit=1`,
@@ -112,7 +120,8 @@ export default function Home() {
         [project.id]: {
           project,
           overview,
-          previewImage: latest?.[0]?.secureUrl,
+          previewImage:
+            outcome?.[0]?.secureUrl ?? latest?.[0]?.secureUrl,
         },
       }));
     }
@@ -126,30 +135,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
-      {/* Header */}
-      <header className="border-b border-black/[0.07] bg-[#f7f8f6]">
-        <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-6 lg:px-10">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#172019] text-white">
-              <Sparkles className="h-4 w-4" />
-            </div>
-
-            <div className="text-left">
-              <p className="text-[15px] font-semibold tracking-[-0.02em]">
-                FieldProof
-              </p>
-
-              <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-                Field evidence
-              </p>
-            </div>
-          </Link>
-
-          <span className="text-sm text-muted-foreground">
-            Projects
-          </span>
-        </div>
-      </header>
+      <AppHeader />
 
       {/* Hero */}
       <section className="mx-auto max-w-[1440px] px-6 pb-14 pt-16 lg:px-10 lg:pb-16 lg:pt-20">
@@ -315,15 +301,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#f7f8f6]">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-6 py-8 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between lg:px-10">
-          <span>FieldProof</span>
-          <span>
-            Field evidence · Verification · Impact reporting
-          </span>
-        </div>
-      </footer>
+      <AppFooter />
     </main>
   );
 }

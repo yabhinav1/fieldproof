@@ -5,6 +5,7 @@ import { CloudinaryNotConfiguredError } from "./cloudinary";
 import { AnthropicNotConfiguredError } from "./ai/client";
 import { LlmNotConfiguredError } from "./ai/structured";
 import { GeminiError } from "./ai/gemini";
+import { env } from "./env";
 
 /** Error carrying an HTTP status; throw it from services to get a clean JSON response. */
 export class HttpError extends Error {
@@ -68,6 +69,9 @@ type Handler<Ctx> = (req: Request, ctx: Ctx) => Promise<Response>;
 export function route<Ctx = { params: Promise<Record<string, string>> }>(handler: Handler<Ctx>): Handler<Ctx> {
   return async (req, ctx) => {
     try {
+      if (req.method === "DELETE" && env.protectDemoData) {
+        throw new HttpError(403, "Deleting is turned off on this public demo.");
+      }
       return await handler(req, ctx);
     } catch (err) {
       return errorToResponse(err);

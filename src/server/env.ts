@@ -112,6 +112,14 @@ export const env = {
   get appUrl() {
     return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   },
+
+  /**
+   * The API has no accounts, so on a public deployment anyone could delete the demo data.
+   * With this on, every DELETE is refused. Uploading, comparing and reporting still work.
+   */
+  get protectDemoData() {
+    return flag("PROTECT_DEMO_DATA", false);
+  },
 };
 
 function parseCloudinaryUrl() {

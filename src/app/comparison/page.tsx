@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useId, useMemo, useState } from "react";
-import Link from "next/link";
 
+import { AppFooter } from "@/components/app-footer";
+import { AppHeader } from "@/components/app-header";
 import { apiFetch, errorMessage, jsonRequest } from "@/lib/api";
 import { thumbnailUrl } from "@/lib/cloudinary-url";
 import { assetBelongsToLocation } from "@/lib/locations";
@@ -317,29 +318,10 @@ function ComparisonView() {
 
     return (
         <main className="min-h-screen bg-[#f7f8f6] text-[#172019]">
-            <header className="border-b border-black/[0.07] bg-white">
-                <div className="mx-auto flex max-w-[1500px] items-center justify-between px-6 py-5 lg:px-10">
-                    <div>
-                        <p className="text-[15px] font-semibold">
-                            FieldProof
-                        </p>
-                        <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            Impact comparison
-                        </p>
-                    </div>
-
-                    <Link
-                        href={
-                            selectedProject
-                                ? `/project/${selectedProject.id}`
-                                : "/"
-                        }
-                        className="text-sm text-muted-foreground transition hover:text-foreground"
-                    >
-                        ← {selectedProject ? selectedProject.name : "Projects"}
-                    </Link>
-                </div>
-            </header>
+            <AppHeader
+                projectId={selectedProject?.id}
+                current="comparison"
+            />
 
             <div className="mx-auto max-w-[1500px] px-6 py-10 lg:px-10">
                 {/* Heading */}
@@ -852,6 +834,8 @@ function ComparisonView() {
                     </section>
                 )}
             </div>
+
+            <AppFooter />
         </main>
     );
 }

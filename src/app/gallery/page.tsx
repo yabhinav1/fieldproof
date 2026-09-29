@@ -9,9 +9,10 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { AppFooter } from "@/components/app-footer";
+import { AppHeader } from "@/components/app-header";
 import { apiFetch, errorMessage, isAbort, jsonRequest } from "@/lib/api";
 import { thumbnailUrl } from "@/lib/cloudinary-url";
 import { assetBelongsToLocation } from "@/lib/locations";
@@ -791,26 +792,17 @@ function GalleryView() {
     }
 
     return (
-        <main className="min-h-screen bg-background">
+        <main className="min-h-screen bg-[#f7f8f6]">
+            <AppHeader
+                projectId={selectedProject || undefined}
+                current="gallery"
+            />
+
             {/* Header */}
             <section className="border-b bg-background">
                 <div className="mx-auto max-w-7xl px-6 py-10">
                     <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
                         <div className="max-w-2xl">
-                            <Link
-                                href={
-                                    selectedProject
-                                        ? `/project/${selectedProject}`
-                                        : "/"
-                                }
-                                className="mb-6 inline-block text-sm text-muted-foreground transition hover:text-foreground"
-                            >
-                                ←{" "}
-                                {selectedProject
-                                    ? "Project dashboard"
-                                    : "Projects"}
-                            </Link>
-
                             <div className="mb-3 flex items-center gap-2">
                                 <span className="h-2 w-2 rounded-full bg-foreground" />
 
@@ -1383,6 +1375,8 @@ function GalleryView() {
                     }}
                 />
             )}
+
+            <AppFooter />
         </main>
     );
 }
@@ -2259,7 +2253,7 @@ function AssetDetails({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
-                className="mx-auto max-w-5xl overflow-hidden rounded-2xl border bg-background shadow-2xl"
+                className="mx-auto max-w-5xl overflow-clip rounded-2xl border bg-background shadow-2xl"
                 onClick={(event) =>
                     event.stopPropagation()
                 }
@@ -2295,7 +2289,7 @@ function AssetDetails({
                 </div>
 
                 <div className="grid gap-0 md:grid-cols-[1.15fr_0.85fr]">
-                    <div className="bg-black">
+                    <div className="bg-black md:sticky md:top-0 md:self-start">
                         <img
                             src={asset.secureUrl}
                             alt={

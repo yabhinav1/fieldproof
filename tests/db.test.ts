@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "@/server/db";
-import { createProject, createSite, getProjectOverview, listProjects } from "@/server/services/projects";
+import { eq } from "drizzle-orm";
+import { assets, comparisons, provenance } from "@/server/db/schema";
+import { createLocation } from "@/server/services/locations";
+import { createProject, createSite, getProjectOverview, listProjects, updateProject } from "@/server/services/projects";
 import { ingestResource } from "@/server/services/ingest";
-import { getAssetDetail, listAssets, updateAsset, assetTimeline } from "@/server/services/assets";
-import { searchAssets } from "@/server/services/search";
-import { suggestPair } from "@/server/services/comparisons";
+import { ListAssetsQuery, getAssetDetail, listAssets, updateAsset, assetTimeline } from "@/server/services/assets";
+import { SearchQuery, searchAssets } from "@/server/services/search";
+import { deleteComparison, suggestPair } from "@/server/services/comparisons";
 import { renderReportHtml } from "@/server/services/report-html";
 import type { CloudinaryResource } from "@/server/cloudinary";
 
@@ -208,6 +211,72 @@ describe("ingest", () => {
     const after = await getAssetDetail(db, pair!.afterAssetId);
     expect(before.phase).toBe("before");
     expect(after.phase).toBe("after");
+  });
+
+  it("treats a bare `to` date as the end of that day", async () => {
+    // a-after was captured 2026-09-01 10:00 UTC, so a range ending on that date must include it.
+    const q = ListAssetsQuery.parse({ projectId, from: "2026-09-01", to: "2026-09-01" });
+    const listed = await listAssets(db, q);
+    expect(listed.map((a) => a.cloudinaryPublicId)).toEqual(["fieldproof/ingest-test/a-after"]);
+
+    const s = SearchQuery.parse({ q: "site", projectId, from: "2026-09-01", to: "2026-09-01" });
+    expect(s.to?.toISOString()).toBe("2026-09-01T23:59:59.999Z");
+    expect(() => SearchQuery.parse({ q: "site", projectId, to: "not-a-date" })).toThrow();
+  });
+
+  it("filters search by field location on the server, including legacy assets at its site", async () => {
+    const north = await createLocation(db, { projectId, siteId: siteAId, name: "North bank" });
+    const south = await createLocation(db, { projectId, siteId: siteAId, name: "South bank" });
+
+    // a-before moves to South bank; everything else at site A still has no location.
+    const all = await listAssets(db, { projectId, limit: 200, offset: 0 });
+    const aBefore = all.find((a) => a.cloudinaryPublicId.endsWith("/a-before"))!;
+    await db.update(assets).set({ locationId: south.id }).where(eq(assets.id, aBefore.id));
+
+    const atSouth = await searchAssets(db, { q: "plastic waste", projectId, locationId: south.id, limit: 30 });
+    expect(atSouth.hits.map((h) => h.asset.id)).toEqual([aBefore.id]);
+
+    // North bank must not pick up a photo that belongs to South bank just because they share a site.
+    const atNorth = await searchAssets(db, { q: "plastic waste", projectId, locationId: north.id, limit: 30 });
+    expect(atNorth.hits.map((h) => h.asset.id)).not.toContain(aBefore.id);
+
+    const other = await createProject(db, { name: "Elsewhere", slug: "elsewhere" });
+    await expect(searchAssets(db, { q: "river", projectId: other.id, locationId: north.id, limit: 30 })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("removes a comparison's provenance rows when the comparison is deleted", async () => {
+    const pair = (await suggestPair(db, siteAId))!;
+    const [cmp] = await db
+      .insert(comparisons)
+      .values({ projectId, siteId: siteAId, beforeAssetId: pair.beforeAssetId, afterAssetId: pair.afterAssetId, beforeUrl: "https://b", afterUrl: "https://a" })
+      .returning();
+    await db.insert(provenance).values({
+      assetId: pair.beforeAssetId,
+      purpose: "comparison",
+      derivedUrl: "https://b",
+      transformation: "c_fill",
+      referenceType: "comparison",
+      referenceId: cmp.id,
+    });
+
+    const before = await getAssetDetail(db, pair.beforeAssetId);
+    expect(before.provenance.derivations.map((d) => d.purpose)).toEqual(["thumbnail", "comparison"]);
+
+    await deleteComparison(db, cmp.id);
+    const after = await getAssetDetail(db, pair.beforeAssetId);
+    expect(after.provenance.derivations.map((d) => d.purpose)).toEqual(["thumbnail"]);
+  });
+});
+
+describe("project updates", () => {
+  it("accepts an empty patch, and checks phase boundaries against the stored values", async () => {
+    const p = await createProject(db, { name: "Patch test", slug: "patch-test", duringStart: new Date("2026-03-01"), afterStart: new Date("2026-06-01") });
+
+    expect((await updateProject(db, p.id, {})).name).toBe("Patch test");
+    expect((await updateProject(db, p.id, { orgName: "Org" })).orgName).toBe("Org");
+
+    // afterStart alone is valid on its own, but not against the stored duringStart.
+    await expect(updateProject(db, p.id, { afterStart: new Date("2026-01-01") })).rejects.toMatchObject({ status: 400 });
   });
 });
 

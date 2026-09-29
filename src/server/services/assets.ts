@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Database } from "../db";
 import { assets, provenance, sites, type Asset } from "../db/schema";
 import { notFound, badRequest } from "../http";
+import { InclusiveEndDate } from "../lib/dates";
 import { assignPhase } from "../lib/phase";
 import { getProject } from "./projects";
 
@@ -12,7 +13,7 @@ export const ListAssetsQuery = z.object({
   phase: z.enum(["before", "during", "after", "unknown"]).optional(),
   verified: z.enum(["true", "false"]).optional(),
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: InclusiveEndDate.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(200),
   offset: z.coerce.number().int().min(0).default(0),
 });

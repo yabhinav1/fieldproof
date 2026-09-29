@@ -88,15 +88,35 @@ export function errorToResponse(err: unknown): Response {
   if (err instanceof Anthropic.AuthenticationError) return fail(503, "AI provider rejected the API key.");
   if (err instanceof Anthropic.APIError) return fail(502, `AI provider error: ${err.message}`);
 
-  const message = err instanceof Error ? err.message : "Unexpected error";
+  const pg = postgresErrorCode(err);
+  if (pg === "23505") return fail(409, "A record with the same unique value already exists.");
+  if (pg === "23503") return fail(409, "The record references something that does not exist or is still in use.");
+  if (pg === "22P02") return fail(400, "A value in the request has an invalid format.");
+
   console.error("[api] unhandled error", err);
+  // Driver errors carry the failed SQL and its parameters; never send those to a client.
+  const message = process.env.NODE_ENV === "production" ? "Internal server error." : err instanceof Error ? err.message : "Unexpected error";
   return fail(500, message);
 }
 
-/** Resolves Next.js 15+/16 async route params. */
+/** SQLSTATE of a Postgres error. Drizzle wraps the driver error, so walk the cause chain. */
+function postgresErrorCode(err: unknown): string | undefined {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 4; depth++) {
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Resolves Next.js 15+/16 async route params. Every route parameter in this API is a UUID. */
 export async function param(ctx: { params: Promise<Record<string, string>> }, key: string): Promise<string> {
   const p = await ctx.params;
   const v = p[key];
   if (!v) throw badRequest(`Missing route parameter ${key}`);
+  if (!UUID_RE.test(v)) throw badRequest(`Route parameter ${key} must be a UUID.`);
   return v;
 }

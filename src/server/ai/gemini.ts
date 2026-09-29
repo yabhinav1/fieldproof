@@ -42,9 +42,10 @@ export function isCoolingDown(model: string) {
 async function post<T>(path: string, body: unknown, attempt = 0, maxAttempts = 3, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}/${path}?key=${key()}`, {
+    // Key goes in a header, not the query string, so it never lands in URL logs or error text.
+    res = await fetch(`${BASE}/${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key() },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -177,7 +178,12 @@ export async function geminiGenerateJson<T>(opts: {
 }
 
 async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: string }> {
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  } catch (err) {
+    throw new GeminiError(502, `Could not fetch image for analysis (${err instanceof Error ? err.message : String(err)}): ${url}`);
+  }
   if (!res.ok) throw new GeminiError(502, `Could not fetch image for analysis (${res.status}): ${url}`);
   const mimeType = res.headers.get("content-type")?.split(";")[0] || "image/jpeg";
   const buf = Buffer.from(await res.arrayBuffer());
@@ -198,17 +204,22 @@ const ALLOWED = new Set(["type", "format", "description", "nullable", "enum", "i
 function clean(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(clean);
   if (!node || typeof node !== "object") return node;
-  const src = node as Record<string, unknown>;
+  const src = { ...(node as Record<string, unknown>) };
 
   // anyOf [X, null] → X with nullable
   if (Array.isArray(src.anyOf)) {
     const nonNull = (src.anyOf as Array<Record<string, unknown>>).filter((s) => s.type !== "null");
-    if (nonNull.length === 1) return { ...(clean(nonNull[0]) as Record<string, unknown>), nullable: true };
+    if (nonNull.length === 1) {
+      const inner = clean(nonNull[0]) as Record<string, unknown>;
+      return { ...inner, ...(typeof src.description === "string" && { description: src.description }), nullable: true };
+    }
   }
+  // type ["string", "null"] → string with nullable
   if (Array.isArray(src.type)) {
-    const types = (src.type as string[]).filter((t) => t !== "null");
+    const all = src.type as string[];
+    const types = all.filter((t) => t !== "null");
     src.type = types[0];
-    if (types.length !== (src.type as unknown as string[]).length) src.nullable = true;
+    if (types.length !== all.length) src.nullable = true;
   }
 
   const out: Record<string, unknown> = {};
@@ -226,7 +237,6 @@ function clean(node: unknown): unknown {
       out[k] = v;
     }
   }
-  if (out.type === "integer") out.type = "integer";
   return out;
 }
 

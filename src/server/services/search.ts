@@ -1,17 +1,20 @@
-import { and, cosineDistance, desc, eq, gte, isNotNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, gte, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "../db";
-import { assets } from "../db/schema";
+import { assets, locations } from "../db/schema";
 import { embedText, embeddingsAvailable } from "../ai/embeddings";
+import { badRequest } from "../http";
+import { InclusiveEndDate } from "../lib/dates";
 import { publicAsset } from "./assets";
 
 export const SearchQuery = z.object({
-  q: z.string().min(1).max(500),
+  q: z.string().trim().min(1).max(500),
   projectId: z.string().uuid(),
   siteId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
   phase: z.enum(["before", "during", "after", "unknown"]).optional(),
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: InclusiveEndDate.optional(),
   verifiedOnly: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
@@ -35,6 +38,16 @@ export async function searchAssets(db: Database, q: z.infer<typeof SearchQuery>)
   if (q.from) filters.push(gte(assets.capturedAt, q.from));
   if (q.to) filters.push(lte(assets.capturedAt, q.to));
   if (q.verifiedOnly === "true") filters.push(eq(assets.verified, true));
+
+  if (q.locationId) {
+    // Filtering here rather than in the browser: applied after `limit`, a location's photos that
+    // rank below the cut would be dropped and the search would wrongly come back empty.
+    const location = await db.query.locations.findFirst({ where: eq(locations.id, q.locationId) });
+    if (!location || location.projectId !== q.projectId) throw badRequest("locationId does not belong to this project.");
+    // Assets ingested before locations existed have none; those fall back to the location's site.
+    const legacy = location.siteId ? and(isNull(assets.locationId), eq(assets.siteId, location.siteId)) : undefined;
+    filters.push(legacy ? or(eq(assets.locationId, location.id), legacy)! : eq(assets.locationId, location.id));
+  }
 
   const candidateLimit = Math.max(q.limit * 3, 50);
 
@@ -62,7 +75,11 @@ export async function searchAssets(db: Database, q: z.infer<typeof SearchQuery>)
   let semanticRows: Array<{ row: typeof assets.$inferSelect; similarity: number }> = [];
   let mode: SearchMode = "keyword";
   if (embeddingsAvailable()) {
-    const vector = await embedText(q.q, "query");
+    // A throttled or unreachable embedding provider must not take keyword search down with it.
+    const vector = await embedText(q.q, "query").catch((err) => {
+      console.warn(`[search] query embedding failed; keyword results only: ${err instanceof Error ? err.message : err}`);
+      return null;
+    });
     if (vector) {
       const similarity = sql<number>`1 - (${cosineDistance(assets.embedding, vector)})`;
       semanticRows = await db

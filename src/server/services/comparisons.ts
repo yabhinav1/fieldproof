@@ -110,6 +110,7 @@ export async function listComparisons(db: Database, q: z.infer<typeof ListCompar
 
 export async function deleteComparison(db: Database, id: string) {
   await getComparison(db, id);
+  await db.delete(provenance).where(and(eq(provenance.referenceType, "comparison"), eq(provenance.referenceId, id)));
   await db.delete(comparisons).where(eq(comparisons.id, id));
 }
 

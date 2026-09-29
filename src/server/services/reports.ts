@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "../db";
 import { assets, comparisons, provenance, reports, sites, type Comparison, type ReportContent } from "../db/schema";
@@ -46,9 +46,11 @@ export async function createReport(db: Database, input: z.infer<typeof CreateRep
   }
 
   const dated = assetRows.filter((a) => a.capturedAt).map((a) => a.capturedAt!.getTime());
-  const flaggedCount = (
-    await db.select({ id: assets.id }).from(assets).where(and(eq(assets.projectId, project.id), eq(assets.verified, false)))
-  ).length;
+  const [flagged] = await db
+    .select({ n: count() })
+    .from(assets)
+    .where(and(eq(assets.projectId, project.id), eq(assets.verified, false)));
+  const flaggedCount = Number(flagged?.n ?? 0);
 
   const facts: NarrativeFacts = {
     project: { name: project.name, description: project.description, orgName: project.orgName },

@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "../db";
@@ -134,13 +134,23 @@ export async function ingestAssets(
     }
   }
 
-  // Embeddings in one batch for everything that made it in.
-  await embedPending(
-    db,
-    results
-      .filter((r) => r.assetId)
-      .map((r) => r.assetId!),
-  );
+  // Embeddings in one batch for everything that made it in. The assets are already stored, so a
+  // throttled embedding provider must not turn a successful ingest into an error response;
+  // `npm run reanalyze` fills in whatever is missing later.
+  try {
+    await embedPending(
+      db,
+      results
+        .filter((r) => r.assetId)
+        .map((r) => r.assetId!),
+    );
+  } catch (err) {
+    console.warn(
+      `[ingest] embedding failed; assets are stored without vectors: ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
 
   return results;
 }
@@ -585,31 +595,20 @@ export async function embedPending(
     return 0;
   }
 
-  const rows: Array<{
-    id: string;
-    searchText: string | null;
-    embedding: number[] | null;
-  }> = [];
-
-  for (const id of assetIds) {
-    const r =
-      await db.query.assets.findFirst({
-        where: eq(assets.id, id),
-        columns: {
-          id: true,
-          searchText: true,
-          embedding: true,
-        },
-      });
-
-    if (
-      r &&
-      r.searchText &&
-      !r.embedding
-    ) {
-      rows.push(r);
-    }
-  }
+  const rows = await db
+    .select({
+      id: assets.id,
+      searchText: assets.searchText,
+    })
+    .from(assets)
+    .where(
+      and(
+        inArray(assets.id, assetIds),
+        isNotNull(assets.searchText),
+        ne(assets.searchText, ""),
+        isNull(assets.embedding),
+      ),
+    );
 
   if (!rows.length) {
     return 0;

@@ -58,19 +58,25 @@ export async function createProject(db: Database, input: z.infer<typeof CreatePr
 }
 
 export async function updateProject(db: Database, id: string, input: z.infer<typeof UpdateProjectSchema>) {
-  await getProject(db, id);
-  const [row] = await db
-    .update(projects)
-    .set({
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.slug !== undefined && { slug: input.slug }),
-      ...(input.description !== undefined && { description: input.description }),
-      ...(input.orgName !== undefined && { orgName: input.orgName }),
-      ...(input.duringStart !== undefined && { duringStart: input.duringStart }),
-      ...(input.afterStart !== undefined && { afterStart: input.afterStart }),
-    })
-    .where(eq(projects.id, id))
-    .returning();
+  const current = await getProject(db, id);
+  const patch = {
+    ...(input.name !== undefined && { name: input.name }),
+    ...(input.slug !== undefined && { slug: input.slug }),
+    ...(input.description !== undefined && { description: input.description }),
+    ...(input.orgName !== undefined && { orgName: input.orgName }),
+    ...(input.duringStart !== undefined && { duringStart: input.duringStart }),
+    ...(input.afterStart !== undefined && { afterStart: input.afterStart }),
+  };
+  if (!Object.keys(patch).length) return current;
+
+  // Check the boundaries as they will be after the patch, not just the ones being sent.
+  const duringStart = input.duringStart ?? current.duringStart;
+  const afterStart = input.afterStart ?? current.afterStart;
+  if (duringStart && afterStart && duringStart > afterStart) {
+    throw badRequest("duringStart must be before afterStart.");
+  }
+
+  const [row] = await db.update(projects).set(patch).where(eq(projects.id, id)).returning();
   return row;
 }
 

@@ -1,5 +1,5 @@
 import { getDb } from "@/server/db";
-import { ok, parseBody, parseQuery, route } from "@/server/http";
+import { created, ok, parseBody, parseQuery, route } from "@/server/http";
 import {
   CreateLocationSchema,
   ListLocationsQuery,
@@ -20,5 +20,5 @@ export const POST = route(async (req) => {
   const body = await parseBody(req, CreateLocationSchema);
   const db = await getDb();
 
-  return ok(await createLocation(db, body));
+  return created(await createLocation(db, body));
 });

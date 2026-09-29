@@ -33,4 +33,18 @@ describe("toGeminiSchema", () => {
     const items = (props.metrics.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
     expect(items.name).toMatchObject({ type: "string", enum: ["a", "b"] });
   });
+
+  it("marks only nullable fields as nullable, keeps their description, and leaves the input alone", () => {
+    const schema = z.object({
+      required_text: z.string(),
+      optional_note: z.string().nullable().describe("Why, if known."),
+    });
+
+    const props = toGeminiSchema(schema).properties as Record<string, Record<string, unknown>>;
+    expect(props.required_text).toEqual({ type: "string" });
+    expect(props.optional_note).toEqual({ type: "string", description: "Why, if known.", nullable: true });
+
+    // Same schema twice must give the same answer: conversion does not mutate what it reads.
+    expect(toGeminiSchema(schema)).toEqual(toGeminiSchema(schema));
+  });
 });
